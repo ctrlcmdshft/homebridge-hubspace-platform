@@ -60,7 +60,10 @@ export interface HubspaceMetadeviceRaw {
       defaultName?: string;
     };
   };
-  state?: DeviceStateValue[];
+  state?: {
+    metadeviceId: string;
+    values: DeviceStateValue[];
+  };
   children?: string[];
 }
 

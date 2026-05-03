@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.24] - 2026-05-03
+
+### Bug Fixes
+
+- **state:** `state` field is an object with a nested `values` array — extract `state.values` correctly; fixes all device state reading (power, brightness, fan speed)
+
+---
+
 ## [1.0.23] - 2026-05-03
 
 ### Changes
