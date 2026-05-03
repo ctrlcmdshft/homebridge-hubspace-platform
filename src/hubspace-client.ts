@@ -14,7 +14,7 @@ import {
 const AUTH_URL =
   'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
 /** Device operations — metadevices, state read/write. */
-const API_BASE = 'https://semantics2.afero.net/v1';
+const API_BASE = 'https://api2.afero.net/v1';
 /** Account listing fallback (only used if JWT has no account claim). */
 const ACCOUNT_API = 'https://api2.afero.net/v1';
 const CLIENT_ID = 'hubspace_android';
