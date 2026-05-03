@@ -448,6 +448,9 @@ export class FanAccessory extends BaseHubspaceAccessory {
     instance: string | undefined,
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
+    this.log.debug(
+      `[Hubspace] SET fan power → ${on ? 'on' : 'off'} (instance: ${instance ?? 'none'})`,
+    );
     await this.setDeviceValues([
       this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
     ]);
