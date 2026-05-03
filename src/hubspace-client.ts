@@ -46,7 +46,12 @@ export class HubspaceClient {
     this.http = axios.create({
       baseURL: API_BASE,
       timeout: 30_000,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Afero cloud APIs reject requests without the Flutter app UA.
+        'User-Agent': 'Dart/3.3 (dart:io)',
+        'host': 'semantics2.afero.net',
+      },
     });
 
     // Attach Bearer token to every request.
@@ -251,7 +256,11 @@ export class HubspaceClient {
     this.log.debug('[Hubspace] Account ID not in token — querying accounts API…');
     try {
       const res = await axios.get<AferoAccount[]>(`${ACCOUNT_API}/accounts`, {
-        headers: { Authorization: `Bearer ${this.tokens!.accessToken}` },
+        headers: {
+          Authorization: `Bearer ${this.tokens!.accessToken}`,
+          'User-Agent': 'Dart/3.3 (dart:io)',
+          'host': 'api2.afero.net',
+        },
         timeout: 15_000,
       });
       if (res.data && res.data.length > 0) {
@@ -288,11 +297,13 @@ export class HubspaceClient {
       }
 
       // Try the claim names Hubspace/Afero are known to use.
+      // 'sub' is the Keycloak user UUID which maps directly to the Afero account ID.
       const candidate =
         (payload['account_id'] as string | undefined) ??
         (payload['accountId'] as string | undefined) ??
         (payload['afero_account_id'] as string | undefined) ??
-        (payload['custom:account_id'] as string | undefined);
+        (payload['custom:account_id'] as string | undefined) ??
+        (payload['sub'] as string | undefined);
 
       return candidate ?? null;
     } catch {
