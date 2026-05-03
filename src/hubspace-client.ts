@@ -28,6 +28,8 @@ export class HubspaceClient {
   private readonly tokenCachePath: string;
   /** Prevents concurrent token refreshes. */
   private refreshInFlight: Promise<void> | null = null;
+  /** Prevents concurrent password logins. */
+  private authInFlight: Promise<void> | null = null;
   private readonly debug: boolean;
 
   constructor(
@@ -195,6 +197,12 @@ export class HubspaceClient {
   // ─── Authentication ──────────────────────────────────────────────────────────
 
   private async authenticate(): Promise<void> {
+    if (this.authInFlight) return this.authInFlight;
+    this.authInFlight = this._doAuthenticate().finally(() => { this.authInFlight = null; });
+    return this.authInFlight;
+  }
+
+  private async _doAuthenticate(): Promise<void> {
     this.log.info('[Hubspace] Authenticating with username/password…');
     const params = new URLSearchParams({
       grant_type: 'password',
@@ -278,8 +286,16 @@ export class HubspaceClient {
     if (!this.tokens) {
       await this.authenticate();
     } else if (this.isAccessTokenExpired()) {
-      if (this.isRefreshTokenValid()) {
-        await this.doRefresh();
+      // Always try refresh first; only fall back to password login if no refresh token exists.
+      if (this.tokens.refreshToken) {
+        try {
+          await this.doRefresh();
+        } catch {
+          // Refresh failed — only authenticate if the refresh token is also expired.
+          if (!this.isRefreshTokenValid()) {
+            await this.authenticate();
+          }
+        }
       } else {
         await this.authenticate();
       }
@@ -291,11 +307,15 @@ export class HubspaceClient {
 
   private storeTokens(data: KeycloakTokenResponse): void {
     const now = Date.now();
+    // refresh_expires_in === 0 means the refresh token never expires (Keycloak offline sessions).
+    const refreshExpiresAt = data.refresh_expires_in === 0
+      ? Number.MAX_SAFE_INTEGER
+      : now + data.refresh_expires_in * 1000;
     this.tokens = {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       expiresAt: now + data.expires_in * 1000,
-      refreshExpiresAt: now + data.refresh_expires_in * 1000,
+      refreshExpiresAt,
     };
   }
 
