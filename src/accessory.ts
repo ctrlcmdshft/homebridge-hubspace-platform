@@ -259,7 +259,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
   private getPower(): CharacteristicValue {
     const v = this.findValue(FC.POWER);
-    return v?.value === 'true' || v?.value === true || v?.value === 1;
+    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
   }
 
   private getBrightness(): CharacteristicValue {
@@ -289,7 +289,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
   // ── Setters ───────────────────────────────────────────────────────────────────
 
   private async setPower(on: boolean): Promise<void> {
-    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'true' : 'false')]);
+    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
   }
 
   private async setBrightness(value: number): Promise<void> {
@@ -431,7 +431,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
   private getFanActive(): CharacteristicValue {
     const v = this.findFanPowerValue();
-    const on = v?.value === 'true' || v?.value === true || v?.value === 1;
+    const on = v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
     return on
       ? this.platform.Characteristic.Active.ACTIVE
       : this.platform.Characteristic.Active.INACTIVE;
@@ -443,7 +443,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
     await this.setDeviceValues([
-      this.buildPatch(FC.POWER, on ? 'true' : 'false', instance),
+      this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
     ]);
   }
 
@@ -460,8 +460,8 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
   private getFanDirection(): CharacteristicValue {
     const v = this.findValue(FC.FAN_REVERSE);
-    const reversed = v?.value === 'true' || v?.value === true;
-    // Hubspace "reverse=true" → winter mode (clockwise from below) → HomeKit CLOCKWISE.
+    // Hubspace "reverse" → winter mode (clockwise from below) → HomeKit CLOCKWISE.
+    const reversed = v?.value === 'reverse' || v?.value === 'true' || v?.value === true;
     return reversed
       ? this.platform.Characteristic.RotationDirection.CLOCKWISE
       : this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE;
@@ -471,7 +471,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     const reversed =
       hkDir === this.platform.Characteristic.RotationDirection.CLOCKWISE;
     await this.setDeviceValues([
-      this.buildPatch(FC.FAN_REVERSE, reversed ? 'true' : 'false'),
+      this.buildPatch(FC.FAN_REVERSE, reversed ? 'reverse' : 'forward'),
     ]);
   }
 
@@ -479,12 +479,12 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
   private getLightPower(): CharacteristicValue {
     const v = this.findValue(FC.POWER, 'light-power');
-    return v?.value === 'true' || v?.value === true || v?.value === 1;
+    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
   }
 
   private async setLightPower(on: boolean): Promise<void> {
     await this.setDeviceValues([
-      this.buildPatch(FC.POWER, on ? 'true' : 'false', 'light-power'),
+      this.buildPatch(FC.POWER, on ? 'on' : 'off', 'light-power'),
     ]);
   }
 
@@ -557,11 +557,11 @@ export class OutletAccessory extends BaseHubspaceAccessory {
 
   private getPower(): CharacteristicValue {
     const v = this.findValue(FC.POWER);
-    return v?.value === 'true' || v?.value === true || v?.value === 1;
+    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
   }
 
   private async setPower(on: boolean): Promise<void> {
-    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'true' : 'false')]);
+    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
   }
 
   protected pushCharacteristics(): void {
