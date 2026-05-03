@@ -12,6 +12,9 @@
   <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins">
     <img src="https://img.shields.io/badge/homebridge-2.0%20ready-blueviolet?logo=homebridge" alt="Homebridge 2.0 ready" />
   </a>
+  <a href="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml">
+    <img src="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml/badge.svg" alt="Build" />
+  </a>
 </p>
 
 # Homebridge Hubspace Platform
