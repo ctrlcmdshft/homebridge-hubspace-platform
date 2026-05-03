@@ -13,7 +13,10 @@ import {
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const AUTH_URL =
   'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
-const API_BASE = 'https://api2.afero.net/v1';
+/** Device operations — metadevices, state read/write. */
+const API_BASE = 'https://semantics2.afero.net/v1';
+/** Account listing fallback (only used if JWT has no account claim). */
+const ACCOUNT_API = 'https://api2.afero.net/v1';
 const CLIENT_ID = 'hubspace_android';
 
 /** Buffer before token expiry within which we proactively refresh (ms). */
@@ -236,16 +239,65 @@ export class HubspaceClient {
   private async resolveAccountId(): Promise<string> {
     if (this.accountId) return this.accountId;
 
-    this.log.debug('[Hubspace] Fetching Afero account ID…');
-    const res = await this.http.get<AferoAccount[]>('/accounts');
-
-    if (!res.data || res.data.length === 0) {
-      throw new Error('[Hubspace] No Afero accounts found for this user.');
+    // Primary: decode account ID directly from the JWT — no extra API call needed.
+    const fromJwt = this.extractAccountIdFromJwt();
+    if (fromJwt) {
+      this.accountId = fromJwt;
+      this.log.debug(`[Hubspace] Account ID from token: ${this.accountId}`);
+      return this.accountId;
     }
 
-    this.accountId = res.data[0].accountId;
-    this.log.debug(`[Hubspace] Account ID: ${this.accountId}`);
-    return this.accountId;
+    // Fallback: ask the accounts API.
+    this.log.debug('[Hubspace] Account ID not in token — querying accounts API…');
+    try {
+      const res = await axios.get<AferoAccount[]>(`${ACCOUNT_API}/accounts`, {
+        headers: { Authorization: `Bearer ${this.tokens!.accessToken}` },
+        timeout: 15_000,
+      });
+      if (res.data && res.data.length > 0) {
+        this.accountId = res.data[0].accountId;
+        this.log.debug(`[Hubspace] Account ID from API: ${this.accountId}`);
+        return this.accountId;
+      }
+    } catch (err) {
+      this.log.warn('[Hubspace] Accounts API failed:', this.extractErrorMessage(err));
+    }
+
+    throw new Error(
+      '[Hubspace] Could not determine Afero account ID. ' +
+      'Enable debug logging to inspect the JWT claims.',
+    );
+  }
+
+  /**
+   * Decodes the JWT access token payload and tries to extract the Afero
+   * account ID from known claim names.  Logs all claims in debug mode.
+   */
+  private extractAccountIdFromJwt(): string | null {
+    if (!this.tokens?.accessToken) return null;
+    try {
+      const parts = this.tokens.accessToken.split('.');
+      if (parts.length !== 3) return null;
+
+      const payload = JSON.parse(
+        Buffer.from(parts[1], 'base64url').toString('utf-8'),
+      ) as Record<string, unknown>;
+
+      if (this.debug) {
+        this.log.debug('[Hubspace] JWT claims:', JSON.stringify(payload, null, 2));
+      }
+
+      // Try the claim names Hubspace/Afero are known to use.
+      const candidate =
+        (payload['account_id'] as string | undefined) ??
+        (payload['accountId'] as string | undefined) ??
+        (payload['afero_account_id'] as string | undefined) ??
+        (payload['custom:account_id'] as string | undefined);
+
+      return candidate ?? null;
+    } catch {
+      return null;
+    }
   }
 
   // ─── Token persistence ───────────────────────────────────────────────────────
