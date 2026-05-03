@@ -2,69 +2,73 @@
   <img src="https://raw.githubusercontent.com/homebridge/branding/latest/logos/homebridge-wordmark-logo-vertical.png" height="150"/>
 </p>
 
-<span align="center">
+<p align="center">
+  <a href="https://www.npmjs.com/package/homebridge-hubspace-platform">
+    <img src="https://img.shields.io/npm/v/homebridge-hubspace-platform?label=npm&logo=npm&color=limegreen" alt="npm version" />
+  </a>
+  <a href="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/ctrlcmdshft/homebridge-hubspace-platform" alt="MIT License" />
+  </a>
+  <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins">
+    <img src="https://img.shields.io/badge/homebridge-2.0%20ready-blueviolet?logo=homebridge" alt="Homebridge 2.0 ready" />
+  </a>
+</p>
 
 # Homebridge Hubspace Platform
 
-<a href="https://www.npmjs.com/package/homebridge-hubspace-platform">
-  <img src="https://img.shields.io/npm/v/homebridge-hubspace-platform.svg?logo=npm&logoColor=fff&label=NPM+package&color=limegreen" alt="homebridge-hubspace-platform on npm" />
-</a>
+Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, and switches directly from the Home app or with Siri.
 
-</span>
+> **Disclaimer:** This project is not affiliated with or endorsed by Hubspace, Home Depot, or Afero. It is an independent community plugin built by reverse-engineering the Afero cloud API.
 
-# About
+---
 
-Homebridge Hubspace Platform is a plugin that integrates Hubspace devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit. Control your smart ceiling fans, outlets, lights, and switches directly from the Home app.
+## Supported devices
 
-Built from scratch in TypeScript with reliable token caching — the plugin survives Homebridge restarts without triggering login emails.
-
-# Disclaimer
-
-I do not own any rights to Hubspace or Afero. Any work published here is solely for my own convenience. I am not making any guarantees about the code or products referenced here.
-
-# Tested products
-
-| Product | Functions supported |
+| Device | Features |
 | --- | --- |
-| [Hampton Bay Universal Smart Wi-Fi 4-Speed Ceiling Fan](https://www.homedepot.com/p/Hampton-Bay-Universal-Smart-Wi-Fi-4-Speed-Ceiling-Fan-White-Remote-Control-For-Use-Only-With-AC-Motor-Fans-Powered-by-Hubspace-76278/315169181) | <ul><li>Fan on/off</li><li>Fan speed (4 speeds)</li><li>Fan direction</li><li>Light on/off</li><li>Light brightness</li></ul> |
-| Defiant Smart Plug | <ul><li>Power on/off</li></ul> |
-| Hubspace Smart Switch | <ul><li>Power on/off</li></ul> |
-| Hubspace Smart Light | <ul><li>On/off</li><li>Brightness</li><li>Color temperature</li><li>RGB color</li></ul> |
+| Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · direction · light on/off · brightness |
+| Defiant Smart Plug | On/off |
+| Hubspace Smart Switch | On/off |
+| Hubspace Smart Light | On/off · brightness · color temperature · RGB color |
 
-# Requirements
+---
+
+## Requirements
 
 - **Node.js** ≥ 18.15
-- **Homebridge** ≥ 1.8.0 (including v2.x)
-- A Hubspace / Home Depot account with at least one device
+- **Homebridge** ≥ 1.8.0 (v2.x supported)
+- A Hubspace / Home Depot account with at least one paired device
 
-# Installation
+---
 
-### Via Homebridge UI (recommended)
+## Installation
+
+**Via Homebridge UI (recommended)**
 
 1. Open the Homebridge UI → **Plugins** tab
 2. Search for `homebridge-hubspace-platform`
 3. Click **Install**
-4. Click **Settings** and fill in your credentials
+4. Click **Settings**, enter your Hubspace credentials, and save
 5. Restart Homebridge
 
-### Manual
+**Manual**
 
 ```bash
 npm install -g homebridge-hubspace-platform
 ```
 
-# Configuration
+---
 
-Add to your Homebridge `config.json` under the `"platforms"` array:
+## Configuration
+
+Minimal `config.json` entry under `"platforms"`:
 
 ```json
 {
   "platform": "HubspacePlatform",
   "name": "Hubspace",
   "username": "you@example.com",
-  "password": "your-hubspace-password",
-  "pollingInterval": 30,
-  "debug": false
+  "password": "your-hubspace-password"
 }
 ```
 
@@ -75,52 +79,33 @@ Add to your Homebridge `config.json` under the `"platforms"` array:
 | `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
-| `pollingInterval` | integer | `30` | Seconds between state polls |
+| `pollingInterval` | integer | `30` | Seconds between state polls (10–600) |
 | `debug` | boolean | `false` | Log verbose API details |
 
-# Troubleshooting
+---
 
-**Plugin logs `Authentication failed`**
-- Double-check your username and password in the Homebridge config.
-- Make sure you can log into the Hubspace app on your phone.
+## Troubleshooting
+
+**Authentication failed**
+- Check your username and password in the Homebridge config.
+- Confirm you can log into the Hubspace app on your phone.
 
 **Accessories show as `No Response`**
 - Check Homebridge logs for `[Hubspace]` error lines.
 - Enable `"debug": true` temporarily to see full API responses.
-- Verify that `https://semantics2.afero.net` is reachable from your Homebridge host.
+- Verify your Homebridge host can reach `semantics2.afero.net`.
 
 **Device not appearing**
-- Enable `"debug": true` — the discovery log will print every device returned by the cloud and why it was skipped.
+- Enable `"debug": true` — the discovery log will print every device the cloud returned and why it was skipped.
 
 **Token cache corruption**
-- Delete `<homebridge-storage>/hubspace-tokens.json` and restart. The plugin will re-authenticate.
+- Delete `<homebridge-storage>/hubspace-tokens.json` and restart. The plugin will re-authenticate once.
 
-# Development
+---
 
-There is no official documentation for Hubspace products. Under the hood they use the Afero cloud. Any functionality here is gained by experimenting with the devices and observing API responses.
+## Development
 
-Hubspace uses [Keycloak](https://www.keycloak.org) for authentication. To get a token for testing, send a `POST` with `x-www-form-urlencoded` body to:
-
-```
-https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token
-```
-
-| Key | Value |
-| --- | --- |
-| `grant_type` | `password` |
-| `client_id` | `hubspace_android` |
-| `username` | your email |
-| `password` | your password |
-
-### API endpoints used
-
-| Purpose | Method | URL |
-| --- | --- | --- |
-| Authentication | POST | `https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token` |
-| Resolve account ID | GET | `https://api2.afero.net/v1/users/me` |
-| List devices | GET | `https://semantics2.afero.net/v1/accounts/{id}/metadevices?expansions=state` |
-| Get device state | GET | `https://semantics2.afero.net/v1/accounts/{id}/metadevices/{deviceId}?expansions=state` |
-| Set device state | PUT | `https://semantics2.afero.net/v1/accounts/{id}/metadevices/{deviceId}/state` |
+There is no official documentation for the Hubspace consumer API. All functionality here was gained by experimenting with real devices and observing API responses.
 
 ### Local setup
 
@@ -128,10 +113,65 @@ https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/tok
 git clone https://github.com/ctrlcmdshft/homebridge-hubspace-platform.git
 cd homebridge-hubspace-platform
 npm install
-npm run build    # build once
-npm run watch    # rebuild on save
+npm run build    # compile once
+npm run watch    # recompile on save
 ```
 
-# License
+### Authentication
 
-MIT © ctrlcmdshft
+Hubspace uses [Keycloak](https://www.keycloak.org) for auth. To obtain a token manually, `POST` to:
+
+```
+https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token
+```
+
+with `Content-Type: application/x-www-form-urlencoded` and the body:
+
+```
+grant_type=password
+client_id=hubspace_android
+username=<your email>
+password=<your password>
+scope=openid offline_access
+```
+
+### API endpoints
+
+**Authentication**
+```
+POST https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token
+```
+
+**Resolve account ID**
+```
+GET https://api2.afero.net/v1/users/me
+```
+
+**List all devices**
+```
+GET https://semantics2.afero.net/v1/accounts/{accountId}/metadevices?expansions=state
+```
+
+**Get device state**
+```
+GET https://semantics2.afero.net/v1/accounts/{accountId}/metadevices/{deviceId}?expansions=state
+```
+
+**Set device state**
+```
+PUT https://semantics2.afero.net/v1/accounts/{accountId}/metadevices/{deviceId}/state
+```
+
+### Exploring the API
+
+Copy `.env.example` to `.env`, fill in your credentials, then run the discovery script:
+
+```bash
+USERNAME=you@example.com PASSWORD=yourpass node discover.mjs
+```
+
+---
+
+## License
+
+MIT © [ctrlcmdshft](https://github.com/ctrlcmdshft)
