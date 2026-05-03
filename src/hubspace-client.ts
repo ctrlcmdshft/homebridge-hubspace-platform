@@ -94,11 +94,13 @@ export class HubspaceClient {
 
     if (this.tokens && this.isRefreshTokenValid()) {
       this.log.info('[Hubspace] Loaded cached tokens — skipping login.');
-      // Proactively refresh if the access token is close to expiry.
       if (this.isAccessTokenExpired()) {
         this.log.debug('[Hubspace] Access token near expiry; refreshing…');
         await this.doRefresh();
       }
+      // Always decode and log the access token claims so we can identify fields.
+      const claims = this.decodeJwt(this.tokens.accessToken);
+      this.log.info('[Hubspace] Cached access token claims:', JSON.stringify(claims));
     } else {
       this.log.info('[Hubspace] No valid cached tokens — authenticating…');
       await this.authenticate();
@@ -169,6 +171,8 @@ export class HubspaceClient {
       client_id: CLIENT_ID,
       username: this.username,
       password: this.password,
+      // Request openid scope so we also get an id_token with richer user claims.
+      scope: 'openid profile email',
     });
 
     let data: KeycloakTokenResponse;
@@ -190,6 +194,17 @@ export class HubspaceClient {
     }
 
     this.storeTokens(data);
+
+    // Always log all JWT claims so we can identify the correct account ID field.
+    const accessClaims = this.decodeJwt(data.access_token);
+    this.log.info('[Hubspace] Access token claims:', JSON.stringify(accessClaims));
+    if ((data as KeycloakTokenResponse & { id_token?: string }).id_token) {
+      const idClaims = this.decodeJwt(
+        (data as KeycloakTokenResponse & { id_token?: string }).id_token!,
+      );
+      this.log.info('[Hubspace] ID token claims:', JSON.stringify(idClaims));
+    }
+
     this.saveCachedTokens();
     this.log.info('[Hubspace] Authentication successful — tokens cached.');
   }
