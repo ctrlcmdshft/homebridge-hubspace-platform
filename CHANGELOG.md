@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.16] - 2026-05-03
+
+### Bug Fixes
+
+- **accessories:** use `declare` on service fields (`svc`, `fanSvc`, `lightSvc`) to prevent TypeScript ES2022 class-field initializers from overwriting values set during `setupServices()`, which was causing `updateCharacteristic` to throw on every poll cycle
+- **discovery:** deduplicate devices by friendly name — when the API returns both a `fan` and a `ceiling-fan` metadevice for the same physical device, keep only the `ceiling-fan` entry (fixes 2 fans appearing for 1 physical ceiling fan)
+
+---
+
 ## [1.0.15] - 2026-05-03
 
 ### Bug Fixes
