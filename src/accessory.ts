@@ -169,7 +169,7 @@ export abstract class BaseHubspaceAccessory {
   /** Called by the platform on each poll cycle with fresh state data. */
   updateState(values: DeviceStateValue[]): void {
     this.rebuildStateMap(values);
-    this.log.debug(
+    this.log.info(
       `[Hubspace] State for "${this.device.friendlyName}": ` +
       values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
     );
@@ -448,7 +448,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     instance: string | undefined,
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
-    this.log.debug(
+    this.log.info(
       `[Hubspace] SET fan power → ${on ? 'on' : 'off'} (instance: ${instance ?? 'none'})`,
     );
     await this.setDeviceValues([

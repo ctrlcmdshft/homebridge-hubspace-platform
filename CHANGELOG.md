@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.20] - 2026-05-03
+
+### Changes
+
+- **diagnostics:** log device state and fan set calls at info level to surface fan power reading issue
+
+---
+
 ## [1.0.19] - 2026-05-03
 
 ### Changes
