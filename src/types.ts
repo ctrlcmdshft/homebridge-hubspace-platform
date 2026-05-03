@@ -47,8 +47,10 @@ export interface DeviceStateValue {
 /** Raw shape returned by semantics2 metadevices API. */
 export interface HubspaceMetadeviceRaw {
   id: string;
+  version?: number;
   typeId: string;
   friendlyName: string;
+  deviceId?: string;
   semanticDescriptionKey?: string;
   description?: {
     device?: {
@@ -58,7 +60,7 @@ export interface HubspaceMetadeviceRaw {
       defaultName?: string;
     };
   };
-  values?: DeviceStateValue[];
+  state?: DeviceStateValue[];
   children?: string[];
 }
 

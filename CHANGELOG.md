@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.22] - 2026-05-03
+
+### Bug Fixes
+
+- **state:** API returns device state under `state` field, not `values` — all state reads and writes now use the correct field, fixing empty state on every poll
+
+---
+
 ## [1.0.21] - 2026-05-03
 
 ### Changes
