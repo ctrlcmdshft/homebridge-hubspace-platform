@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.14] - 2026-05-03
+
+### Bug Fixes
+
+- **state:** use semantic value names for all state writes — `"on"`/`"off"` for power (not `"true"`/`"false"`), `"forward"`/`"reverse"` for fan direction — matching what the semantics2 Afero API expects
+- **state:** update all power readers to recognise `"on"` in addition to `"true"` and boolean `true`
+- **state:** update fan direction reader to recognise `"reverse"` semantic value
+- **polling:** log the device ID and error reason per failed poll cycle instead of just the count
+
+---
+
 ## [1.0.13] - 2026-05-03
 
 ### Bug Fixes

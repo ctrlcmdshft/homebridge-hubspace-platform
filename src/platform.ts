@@ -212,18 +212,24 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
     this.log.debug(`[Hubspace] Polling ${this.handlers.size} device(s)…`);
 
+    const entries = [...this.handlers.entries()];
     const results = await Promise.allSettled(
-      [...this.handlers.entries()].map(async ([deviceId, handler]) => {
+      entries.map(async ([deviceId, handler]) => {
         const values = await this.client.getDeviceState(deviceId);
         handler.updateState(values);
       }),
     );
 
-    const failed = results.filter((r) => r.status === 'rejected');
-    if (failed.length > 0) {
-      this.log.warn(
-        `[Hubspace] ${failed.length} device(s) failed to poll this cycle.`,
-      );
+    let failCount = 0;
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        failCount++;
+        const [deviceId] = entries[i];
+        this.log.warn(`[Hubspace] Poll failed for ${deviceId}: ${r.reason}`);
+      }
+    });
+    if (failCount > 0) {
+      this.log.warn(`[Hubspace] ${failCount} device(s) failed to poll this cycle.`);
     }
   }
 
