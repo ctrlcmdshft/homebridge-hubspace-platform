@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.12] (2026-05-03)
+
+### Bug Fixes
+
+- **auth:** never call password login from the 401 retry interceptor — only use token refresh there, preventing repeated Hubspace login emails and push notifications on every poll cycle
+- **auth:** `resolveAccountId` now uses a valid access token (via `getValidAccessToken`) instead of the raw stored token, preventing `/v1/users/me` failures with an expired token
+- **auth:** do not reset cached account ID on re-authentication — the account ID is stable for the same user
+- **auth:** reduce proactive refresh buffer from 60 s to 30 s so a 120 s access token is used for 90 s before refresh rather than only 60 s
+- **auth:** log access token and refresh token lifetimes on authentication so expiry behaviour is visible in logs
+
+---
+
+## [1.0.11] (2026-05-03)
+
+### Changes
+
+- **homebridge 2.0:** update `engines` and `peerDependencies` to support both Homebridge v1.8+ and v2.0
+- **config:** fix footer URL in plugin settings UI
+- **config:** add `changelog` pointer so Homebridge UI shows release notes on update
+
+---
+
 ## [1.0.10] (2026-05-03)
 
 ### Bug Fixes
