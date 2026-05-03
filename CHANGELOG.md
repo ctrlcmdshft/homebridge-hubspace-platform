@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.25] - 2026-05-03
+
+### Bug Fixes
+
+- **fan:** merge state values from both `fan` and `ceiling-fan` metadevices instead of discarding one — the `ceiling-fan` entry has the bridge/power state while the `fan` entry has `fan-speed` and `fan-reverse`; merging gives the full capability set needed for speed and direction controls
+
+---
+
 ## [1.0.24] - 2026-05-03
 
 ### Bug Fixes

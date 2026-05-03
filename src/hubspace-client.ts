@@ -126,17 +126,31 @@ export class HubspaceClient {
       });
     }
 
-    // Deduplicate: when the API returns both a "fan" and a "ceiling-fan" with
-    // the same friendly name (same physical device), keep only "ceiling-fan".
+    // Deduplicate: when the API returns both a "fan" and a "ceiling-fan" for
+    // the same physical device, merge their state values so we get all
+    // capabilities (power, fan-speed, fan-reverse, light-power, etc.).
     const deduped = new Map<string, HubspaceDevice>();
     for (const d of devices) {
       const key = d.friendlyName.toLowerCase();
       const existing = deduped.get(key);
       if (!existing) {
         deduped.set(key, d);
-      } else if (d.deviceClass.toLowerCase() === 'ceiling-fan') {
-        // Prefer ceiling-fan over generic fan.
-        deduped.set(key, d);
+      } else {
+        // Merge: prefer ceiling-fan deviceClass, combine all state values.
+        const merged: HubspaceDevice = {
+          ...( d.deviceClass.toLowerCase() === 'ceiling-fan' ? d : existing ),
+          values: [
+            ...existing.values,
+            // Only add values not already present by functionClass+functionInstance.
+            ...d.values.filter(
+              (v) => !existing.values.some(
+                (e) => e.functionClass === v.functionClass &&
+                       e.functionInstance === v.functionInstance,
+              ),
+            ),
+          ],
+        };
+        deduped.set(key, merged);
       }
     }
     const result = [...deduped.values()];
