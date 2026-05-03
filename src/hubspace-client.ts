@@ -125,8 +125,23 @@ export class HubspaceClient {
       });
     }
 
-    this.log.info(`[Hubspace] ${devices.length} controllable device(s) after filtering.`);
-    return devices;
+    // Deduplicate: when the API returns both a "fan" and a "ceiling-fan" with
+    // the same friendly name (same physical device), keep only "ceiling-fan".
+    const deduped = new Map<string, HubspaceDevice>();
+    for (const d of devices) {
+      const key = d.friendlyName.toLowerCase();
+      const existing = deduped.get(key);
+      if (!existing) {
+        deduped.set(key, d);
+      } else if (d.deviceClass.toLowerCase() === 'ceiling-fan') {
+        // Prefer ceiling-fan over generic fan.
+        deduped.set(key, d);
+      }
+    }
+    const result = [...deduped.values()];
+
+    this.log.info(`[Hubspace] ${result.length} controllable device(s) after filtering.`);
+    return result;
   }
 
   /** Fetches the latest state for a single device. */

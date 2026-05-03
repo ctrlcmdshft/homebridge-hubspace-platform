@@ -212,7 +212,7 @@ export abstract class BaseHubspaceAccessory {
 // ─── Light accessory ──────────────────────────────────────────────────────────
 
 export class LightAccessory extends BaseHubspaceAccessory {
-  private svc!: Service;
+  declare private svc: Service;
   /** Tracks the last HomeKit hue value so we can combine with saturation. */
   private pendingHue: number | null = null;
   private pendingSat: number | null = null;
@@ -366,10 +366,12 @@ export class LightAccessory extends BaseHubspaceAccessory {
 // ─── Fan accessory (fan + optional light kit) ─────────────────────────────────
 
 export class FanAccessory extends BaseHubspaceAccessory {
-  private fanSvc!: Service;
-  private lightSvc: Service | null = null;
+  declare private fanSvc: Service;
+  declare private lightSvc: Service | null;
 
   protected setupServices(): void {
+    this.lightSvc = null;
+
     // ── Fan service ───────────────────────────────────────────────────────────
     this.fanSvc =
       this.accessory.getService(this.platform.Service.Fanv2) ??
@@ -529,7 +531,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
 // ─── Outlet / switch / plug accessory ────────────────────────────────────────
 
 export class OutletAccessory extends BaseHubspaceAccessory {
-  private svc!: Service;
+  declare private svc: Service;
 
   protected setupServices(): void {
     const useOutletService = ['outlet', 'plug'].includes(
