@@ -14,3 +14,4 @@ package-lock.json
 *.tsbuildinfo
 discover.mjs
 .gitignore
+.env.example
