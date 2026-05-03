@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.15] - 2026-05-03
+
+### Bug Fixes
+
+- **auth:** `refresh_expires_in: 0` from Hubspace Keycloak means the refresh token never expires — treat it as such instead of considering it immediately invalid, which was causing a password login on every token expiry
+- **auth:** coalesce concurrent `authenticate()` calls with an in-flight guard so multiple simultaneous poll requests can't each trigger a separate password login
+- **auth:** always attempt token refresh before falling back to password login, regardless of the computed refresh token expiry
+
+---
+
 ## [1.0.14] - 2026-05-03
 
 ### Bug Fixes
