@@ -1,14 +1,19 @@
 /**
  * Hubspace API discovery — device listing with real account ID from /v1/users/me
- * Run with: node discover.mjs
+ * Run with: USERNAME=you@example.com PASSWORD=yourpass node discover.mjs
  */
 
 import https from "https";
 import { Buffer } from "buffer";
 import zlib from "zlib";
 
-const USERNAME = "wrxratd@gmail.com";
-const PASSWORD = "bLE6BHDdvN@JEq@*";
+const USERNAME = process.env.USERNAME;
+const PASSWORD = process.env.PASSWORD;
+
+if (!USERNAME || !PASSWORD) {
+  console.error("Usage: USERNAME=you@example.com PASSWORD=yourpass node discover.mjs");
+  process.exit(1);
+}
 
 function request(method, url, { headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -43,11 +48,6 @@ function request(method, url, { headers = {}, body } = {}) {
     if (body) req.write(body);
     req.end();
   });
-}
-
-function decodeJwt(token) {
-  try { return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()); }
-  catch { return null; }
 }
 
 (async () => {
@@ -86,38 +86,21 @@ function decodeJwt(token) {
   const userId = meRes.data.userId;
   console.log(`accountId: ${accountId}`);
   console.log(`userId:    ${userId}`);
-  console.log("Full /me:", JSON.stringify(meRes.data, null, 2));
 
   if (!accountId) { console.log("No accountId found"); process.exit(1); }
 
-  // Step 2: probe device endpoints with the real account ID
-  console.log("\n── Device endpoints with real accountId ─────────────────────");
-
-  const probes = [
-    { url: `https://semantics2.afero.net/v1/accounts/${accountId}/metadevices?expansions=state`, host: "semantics2.afero.net" },
-    { url: `https://api2.afero.net/v1/accounts/${accountId}/metadevices?expansions=state`, host: "api2.afero.net" },
-    { url: `https://api2.afero.net/v1/accounts/${accountId}/devices`, host: "api2.afero.net" },
-    { url: `https://api2.afero.net/v2/accounts/${accountId}/devices`, host: "api2.afero.net" },
-    { url: `https://api2.afero.net/v1/accounts/${accountId}`, host: "api2.afero.net" },
-    { url: `https://semantics2.afero.net/v1/accounts/${accountId}/devices`, host: "semantics2.afero.net" },
-    // Also try with userId
-    { url: `https://semantics2.afero.net/v1/accounts/${userId}/metadevices?expansions=state`, host: "semantics2.afero.net" },
-    { url: `https://api2.afero.net/v1/accounts/${userId}/metadevices?expansions=state`, host: "api2.afero.net" },
-  ];
-
-  for (const { url, host } of probes) {
-    try {
-      const r = await request("GET", url, { headers: h(host) });
-      console.log(`\n  ${r.status} GET ${url}`);
-      if (r.status === 200) {
-        console.log("  ✓✓✓ SUCCESS!");
-        console.log(JSON.stringify(r.data, null, 2).slice(0, 2000));
-      } else {
-        console.log("  →", JSON.stringify(r.data).slice(0, 300));
-      }
-    } catch (e) {
-      console.log(`  ERR ${url}: ${e.message}`);
-    }
+  // Step 2: list metadevices
+  console.log("\n── Metadevices ──────────────────────────────────────────────");
+  const devRes = await request(
+    "GET",
+    `https://semantics2.afero.net/v1/accounts/${accountId}/metadevices?expansions=state`,
+    { headers: h("semantics2.afero.net") },
+  );
+  console.log("status:", devRes.status);
+  if (devRes.status === 200) {
+    console.log(JSON.stringify(devRes.data, null, 2).slice(0, 5000));
+  } else {
+    console.log(devRes.data);
   }
 
   console.log("\n── Done ─────────────────────────────────────────────────────");

@@ -37,12 +37,6 @@ export interface KeycloakTokenResponse {
 }
 
 // ─── Afero / Hubspace API ─────────────────────────────────────────────────────
-export interface AferoAccount {
-  accountId: string;
-  type?: string;
-  description?: string;
-}
-
 export interface DeviceStateValue {
   functionClass: string;
   functionInstance: string;
@@ -109,8 +103,6 @@ export const FC = {
   COLOR_MODE: 'color-mode',
   FAN_SPEED: 'fan-speed',
   FAN_REVERSE: 'fan-reverse',
-  PRESET: 'preset',
-  AVAILABLE: 'available',
 } as const;
 
 export type FunctionClass = (typeof FC)[keyof typeof FC];

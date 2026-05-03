@@ -4,9 +4,11 @@ dist/
 # Dependencies
 node_modules/
 
-# Token cache (contains sensitive credentials — never commit)
+# Token cache and secrets — never commit
 hubspace-tokens.json
 *.tokens.json
+.env
+.env.*
 
 # TypeScript cache
 *.tsbuildinfo

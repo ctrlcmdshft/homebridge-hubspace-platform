@@ -22,6 +22,7 @@
       "password": {
         "title": "Hubspace Password",
         "type": "string",
+        "format": "password",
         "required": true
       },
       "pollingInterval": {

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.17] - 2026-05-03
+
+### Bug Fixes
+
+- **security:** remove hardcoded credentials from `discover.mjs` — now reads `USERNAME`/`PASSWORD` from environment variables
+- **types:** remove unused `AferoAccount` interface and unused `FC.PRESET` / `FC.AVAILABLE` constants
+- **schema:** mark password field with `"format": "password"` so Homebridge UI masks it
+- **packaging:** exclude `package-lock.json` and `.gitignore` from the npm tarball
+
+---
+
 ## [1.0.16] - 2026-05-03
 
 ### Bug Fixes
