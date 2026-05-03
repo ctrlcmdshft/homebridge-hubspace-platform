@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.13] (2026-05-03)
+
+### Bug Fixes
+
+- **release:** exclude `discover.mjs` from the npm package (development-only script, not needed by consumers)
+
+---
+
 ## [1.0.12] (2026-05-03)
 
 ### Bug Fixes
