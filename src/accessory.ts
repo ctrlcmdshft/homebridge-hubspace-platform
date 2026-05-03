@@ -169,6 +169,10 @@ export abstract class BaseHubspaceAccessory {
   /** Called by the platform on each poll cycle with fresh state data. */
   updateState(values: DeviceStateValue[]): void {
     this.rebuildStateMap(values);
+    this.log.debug(
+      `[Hubspace] State for "${this.device.friendlyName}": ` +
+      values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
+    );
     this.pushCharacteristics();
   }
 

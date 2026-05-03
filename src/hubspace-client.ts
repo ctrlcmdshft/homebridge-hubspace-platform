@@ -105,7 +105,7 @@ export class HubspaceClient {
     const res = await this.http.get<HubspaceMetadeviceRaw[]>(
       `/accounts/${accountId}/metadevices?expansions=state`,
     );
-    this.log.info(`[Hubspace] Discovered ${res.data.length} metadevice(s).`);
+    this.log.debug(`[Hubspace] API returned ${res.data.length} metadevice(s).`);
 
     const devices: HubspaceDevice[] = [];
     for (const raw of res.data) {

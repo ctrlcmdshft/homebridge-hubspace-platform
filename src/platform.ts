@@ -108,7 +108,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   private async discoverDevices(): Promise<void> {
     this.log.info('[Hubspace] Discovering devices…');
     const devices = await this.client.getDevices();
-    this.log.info(`[Hubspace] Cloud returned ${devices.length} metadevice(s).`);
+    this.log.info(`[Hubspace] Cloud returned ${devices.length} device(s).`);
 
     const seenUUIDs = new Set<string>();
 
