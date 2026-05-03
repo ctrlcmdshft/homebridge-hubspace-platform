@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.19] - 2026-05-03
+
+### Changes
+
+- **debug:** log fan power set calls with instance info to diagnose fan state issues
+
+---
+
 ## [1.0.18] - 2026-05-03
 
 ### Changes
