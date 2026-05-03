@@ -17,8 +17,8 @@ const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
 const CLIENT_ID = 'hubspace_android';
 
-/** Buffer before token expiry within which we proactively refresh (ms). */
-const EXPIRY_BUFFER_MS = 60_000;
+/** Proactively refresh the access token this many ms before it expires. */
+const EXPIRY_BUFFER_MS = 30_000;
 
 // ─── HubspaceClient ─────────────────────────────────────────────────────────
 export class HubspaceClient {
@@ -60,22 +60,17 @@ export class HubspaceClient {
       return config;
     });
 
-    // On 401, try a single token refresh then retry.
+    // On 401, refresh the token once and retry. Never call authenticate() here —
+    // password logins trigger Hubspace emails and push notifications.
     this.http.interceptors.response.use(
       (res) => res,
       async (err: AxiosError) => {
         const cfg = err.config as typeof err.config & { _retried?: boolean };
         if (err.response?.status === 401 && cfg && !cfg._retried) {
           cfg._retried = true;
-          try {
-            await this.doRefresh();
-            cfg.headers!['Authorization'] = `Bearer ${this.tokens!.accessToken}`;
-            return this.http(cfg);
-          } catch {
-            await this.authenticate();
-            cfg.headers!['Authorization'] = `Bearer ${this.tokens!.accessToken}`;
-            return this.http(cfg);
-          }
+          await this.doRefresh();
+          cfg.headers!['Authorization'] = `Bearer ${this.tokens!.accessToken}`;
+          return this.http(cfg);
         }
         return Promise.reject(err);
       },
@@ -163,7 +158,7 @@ export class HubspaceClient {
   private async resolveAccountId(): Promise<string> {
     if (this.accountId) return this.accountId;
 
-    const token = this.tokens!.accessToken;
+    const token = await this.getValidAccessToken();
     let data: Record<string, unknown>;
     try {
       const res = await axios.get<Record<string, unknown>>(USERS_ME_URL, {
@@ -237,9 +232,10 @@ export class HubspaceClient {
 
     this.storeTokens(data);
     this.saveCachedTokens();
-    // Reset cached account ID on re-auth (token may be for a different session).
-    this.accountId = null;
-    this.log.info('[Hubspace] Authentication successful — tokens cached.');
+    this.log.info(
+      `[Hubspace] Authentication successful — access token expires in ${data.expires_in}s, ` +
+      `refresh token expires in ${Math.round(data.refresh_expires_in / 60)}m.`,
+    );
   }
 
   private async doRefresh(): Promise<void> {
