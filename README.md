@@ -4,17 +4,17 @@
 
 <span align="center">
 
-# Homebridge Hubspace New
+# Homebridge Hubspace Platform
 
-<a href="https://www.npmjs.com/package/homebridge-hubspace-new">
-  <img src="https://img.shields.io/npm/v/homebridge-hubspace-new.svg?logo=npm&logoColor=fff&label=NPM+package&color=limegreen" alt="homebridge-hubspace-new on npm" />
+<a href="https://www.npmjs.com/package/homebridge-hubspace-platform">
+  <img src="https://img.shields.io/npm/v/homebridge-hubspace-platform.svg?logo=npm&logoColor=fff&label=NPM+package&color=limegreen" alt="homebridge-hubspace-platform on npm" />
 </a>
 
 </span>
 
 # About
 
-Homebridge Hubspace New is a plugin that integrates Hubspace devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit. Control your smart ceiling fans, outlets, lights, and switches directly from the Home app.
+Homebridge Hubspace Platform is a plugin that integrates Hubspace devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit. Control your smart ceiling fans, outlets, lights, and switches directly from the Home app.
 
 Built from scratch in TypeScript with reliable token caching — the plugin survives Homebridge restarts without triggering login emails.
 
@@ -42,7 +42,7 @@ I do not own any rights to Hubspace or Afero. Any work published here is solely 
 ### Via Homebridge UI (recommended)
 
 1. Open the Homebridge UI → **Plugins** tab
-2. Search for `homebridge-hubspace-new`
+2. Search for `homebridge-hubspace-platform`
 3. Click **Install**
 4. Click **Settings** and fill in your credentials
 5. Restart Homebridge
@@ -50,7 +50,7 @@ I do not own any rights to Hubspace or Afero. Any work published here is solely 
 ### Manual
 
 ```bash
-npm install -g homebridge-hubspace-new
+npm install -g homebridge-hubspace-platform
 ```
 
 # Configuration
@@ -59,7 +59,7 @@ Add to your Homebridge `config.json` under the `"platforms"` array:
 
 ```json
 {
-  "platform": "HubspaceNew",
+  "platform": "HubspacePlatform",
   "name": "Hubspace",
   "username": "you@example.com",
   "password": "your-hubspace-password",
@@ -72,7 +72,7 @@ Add to your Homebridge `config.json` under the `"platforms"` array:
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `platform` | string | **required** | Must be `"HubspaceNew"` |
+| `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
 | `pollingInterval` | integer | `30` | Seconds between state polls |
@@ -125,8 +125,8 @@ https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/tok
 ### Local setup
 
 ```bash
-git clone https://github.com/ctrlcmdshft/homebridge-hubspace-new.git
-cd homebridge-hubspace-new
+git clone https://github.com/ctrlcmdshft/homebridge-hubspace-platform.git
+cd homebridge-hubspace-platform
 npm install
 npm run build    # build once
 npm run watch    # rebuild on save
