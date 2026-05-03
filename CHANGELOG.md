@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.21] - 2026-05-03
+
+### Changes
+
+- **diagnostics:** log raw API response keys and values field to identify state field name
+
+---
+
 ## [1.0.20] - 2026-05-03
 
 ### Changes
