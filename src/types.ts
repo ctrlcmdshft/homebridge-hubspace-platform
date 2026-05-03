@@ -50,6 +50,25 @@ export interface DeviceStateValue {
   lastUpdateTime?: number;
 }
 
+/** Raw shape returned by semantics2 metadevices API. */
+export interface HubspaceMetadeviceRaw {
+  id: string;
+  typeId: string;
+  friendlyName: string;
+  semanticDescriptionKey?: string;
+  description?: {
+    device?: {
+      deviceClass?: string;
+      manufacturerName?: string;
+      model?: string;
+      defaultName?: string;
+    };
+  };
+  values?: DeviceStateValue[];
+  children?: string[];
+}
+
+/** Normalised device used throughout the plugin. */
 export interface HubspaceDevice {
   id: string;
   typeId: string;
@@ -57,12 +76,8 @@ export interface HubspaceDevice {
   deviceClass: string;
   manufacturerName?: string;
   model?: string;
-  defaultName?: string;
-  description?: string;
   /** Current state values for this device. */
   values: DeviceStateValue[];
-  /** Child metadevices (e.g. light kit attached to a fan). */
-  children?: HubspaceDevice[];
 }
 
 // ─── Accessory context (persisted in PlatformAccessory.context) ───────────────
