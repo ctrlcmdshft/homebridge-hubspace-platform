@@ -48,9 +48,7 @@ export class HubspaceClient {
       timeout: 30_000,
       headers: {
         'Content-Type': 'application/json',
-        // Afero cloud APIs reject requests without the Flutter app UA.
         'User-Agent': 'Dart/3.3 (dart:io)',
-        'host': 'semantics2.afero.net',
       },
     });
 
@@ -111,11 +109,21 @@ export class HubspaceClient {
   async getDevices(): Promise<HubspaceDevice[]> {
     const accountId = await this.resolveAccountId();
     const url = `/accounts/${accountId}/metadevices?expansions=state`;
-    this.dbg('GET', url);
+    this.log.info(`[Hubspace] Fetching devices for account ${accountId}…`);
 
-    const res = await this.http.get<HubspaceDevice[]>(url);
-    this.dbg('DEVICES', `got ${res.data.length} metadevice(s)`);
-    return res.data;
+    try {
+      const res = await this.http.get<HubspaceDevice[]>(url);
+      this.log.info(`[Hubspace] Cloud returned ${res.data.length} metadevice(s).`);
+      return res.data;
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        this.log.error(
+          `[Hubspace] Devices request failed — status ${err.response?.status}, ` +
+          `body: ${JSON.stringify(err.response?.data)}`,
+        );
+      }
+      throw err;
+    }
   }
 
   /** Fetches the latest state for a single device. */
@@ -259,7 +267,6 @@ export class HubspaceClient {
         headers: {
           Authorization: `Bearer ${this.tokens!.accessToken}`,
           'User-Agent': 'Dart/3.3 (dart:io)',
-          'host': 'api2.afero.net',
         },
         timeout: 15_000,
       });
