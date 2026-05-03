@@ -1,9 +1,9 @@
 {
-  "pluginAlias": "HubspaceNew",
+  "pluginAlias": "HubspacePlatform",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "## Hubspace New\n\nSign in with your Hubspace (Home Depot) account. Tokens are cached locally — you will **not** be re-prompted on every restart or daily.",
-  "footerDisplay": "See the [README](https://github.com/ctrlcmdshft/homebridge-hubspace-new#readme) for full documentation and troubleshooting tips.",
+  "headerDisplay": "## Hubspace Platform\n\nSign in with your Hubspace (Home Depot) account. Tokens are cached locally — you will **not** be re-prompted on every restart.",
+  "footerDisplay": "See the [README](https://github.com/ctrlcmdshft/homebridge-hubspace-platform#readme) for full documentation and troubleshooting tips.",
   "schema": {
     "type": "object",
     "properties": {

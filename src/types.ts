@@ -1,6 +1,6 @@
 // ─── Plugin identity ─────────────────────────────────────────────────────────
-export const PLUGIN_NAME = 'homebridge-hubspace-new';
-export const PLATFORM_NAME = 'HubspaceNew';
+export const PLUGIN_NAME = 'homebridge-hubspace-platform';
+export const PLATFORM_NAME = 'HubspacePlatform';
 
 // ─── Homebridge config ────────────────────────────────────────────────────────
 export interface HubspaceConfig {

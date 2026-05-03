@@ -1,26 +1,26 @@
 # Changelog
 
-## [1.0.13] (2026-05-03)
+## [1.0.13] - 2026-05-03
 
 ### Bug Fixes
 
-- **release:** exclude `discover.mjs` from the npm package (development-only script, not needed by consumers)
+- **release:** exclude `discover.mjs` from the npm package (development-only script)
 
 ---
 
-## [1.0.12] (2026-05-03)
+## [1.0.12] - 2026-05-03
 
 ### Bug Fixes
 
-- **auth:** never call password login from the 401 retry interceptor — only use token refresh there, preventing repeated Hubspace login emails and push notifications on every poll cycle
-- **auth:** `resolveAccountId` now uses a valid access token (via `getValidAccessToken`) instead of the raw stored token, preventing `/v1/users/me` failures with an expired token
+- **auth:** never call password login from the 401 retry interceptor — only use token refresh, preventing repeated Hubspace login emails and push notifications on every poll cycle
+- **auth:** `resolveAccountId` now uses a valid access token via `getValidAccessToken` instead of the raw stored token, preventing `/v1/users/me` failures with an expired token
 - **auth:** do not reset cached account ID on re-authentication — the account ID is stable for the same user
-- **auth:** reduce proactive refresh buffer from 60 s to 30 s so a 120 s access token is used for 90 s before refresh rather than only 60 s
-- **auth:** log access token and refresh token lifetimes on authentication so expiry behaviour is visible in logs
+- **auth:** reduce proactive refresh buffer from 60 s to 30 s so a 120 s access token is used for 90 s before refresh
+- **auth:** log access token and refresh token lifetimes on authentication
 
 ---
 
-## [1.0.11] (2026-05-03)
+## [1.0.11] - 2026-05-03
 
 ### Changes
 
@@ -30,7 +30,7 @@
 
 ---
 
-## [1.0.10] (2026-05-03)
+## [1.0.10] - 2026-05-03
 
 ### Bug Fixes
 
@@ -39,7 +39,7 @@
 
 ---
 
-## [1.0.9] (2026-05-03)
+## [1.0.9] - 2026-05-03
 
 ### Bug Fixes
 
@@ -49,15 +49,15 @@
 
 ---
 
-## [1.0.8] (2026-05-02)
+## [1.0.8] - 2026-05-02
 
 ### Bug Fixes
 
-- **discovery:** probe five different URL patterns in sequence to find the working device endpoint; log each attempt for easier debugging
+- **discovery:** probe five different URL patterns to find the working device endpoint
 
 ---
 
-## [1.0.7] (2026-05-02)
+## [1.0.7] - 2026-05-02
 
 ### Bug Fixes
 
@@ -65,7 +65,7 @@
 
 ---
 
-## [1.0.6] (2026-05-02)
+## [1.0.6] - 2026-05-02
 
 ### Bug Fixes
 
@@ -73,7 +73,7 @@
 
 ---
 
-## [1.0.5] (2026-05-01)
+## [1.0.5] - 2026-05-01
 
 ### Bug Fixes
 
@@ -81,15 +81,15 @@
 
 ---
 
-## [1.0.4] (2026-05-01)
+## [1.0.4] - 2026-05-01
 
 ### Bug Fixes
 
-- **auth:** parse account ID from Keycloak `sub` claim by stripping the `f:realm:` prefix to get the user UUID
+- **auth:** parse account ID from Keycloak `sub` claim by stripping the `f:realm:` prefix
 
 ---
 
-## [1.0.3] (2026-05-01)
+## [1.0.3] - 2026-05-01
 
 ### Bug Fixes
 
@@ -97,15 +97,15 @@
 
 ---
 
-## [1.0.2] (2026-05-01)
+## [1.0.2] - 2026-05-01
 
 ### Bug Fixes
 
-- **auth:** use JWT `sub` claim for account ID and add `Dart/3.3 (dart:io)` User-Agent header for the Afero API
+- **auth:** use JWT `sub` claim for account ID and add `Dart/3.3 (dart:io)` User-Agent header
 
 ---
 
-## [1.0.1] (2026-05-01)
+## [1.0.1] - 2026-05-01
 
 ### Bug Fixes
 
@@ -113,7 +113,7 @@
 
 ---
 
-## [1.0.0] (2026-05-01)
+## [1.0.0] - 2026-05-01
 
 ### Features
 
