@@ -303,16 +303,20 @@ export class HubspaceClient {
         this.log.debug('[Hubspace] JWT claims:', JSON.stringify(payload, null, 2));
       }
 
-      // Try the claim names Hubspace/Afero are known to use.
-      // 'sub' is the Keycloak user UUID which maps directly to the Afero account ID.
-      const candidate =
+      // Try explicit account ID claims first.
+      const explicit =
         (payload['account_id'] as string | undefined) ??
         (payload['accountId'] as string | undefined) ??
         (payload['afero_account_id'] as string | undefined) ??
-        (payload['custom:account_id'] as string | undefined) ??
-        (payload['sub'] as string | undefined);
+        (payload['custom:account_id'] as string | undefined);
+      if (explicit) return explicit;
 
-      return candidate ?? null;
+      // Fall back to 'sub'. Keycloak encodes it as "f:<realm-uuid>:<user-uuid>",
+      // so take only the last colon-separated segment (the actual Afero user UUID).
+      const sub = payload['sub'] as string | undefined;
+      if (sub) return sub.includes(':') ? sub.split(':').pop()! : sub;
+
+      return null;
     } catch {
       return null;
     }
