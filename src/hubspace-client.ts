@@ -27,6 +27,9 @@ export class HubspaceClient {
   private readonly http: AxiosInstance;
   private tokens: AuthTokens | null = null;
   private accountId: string | null = null;
+  /** Base URL prefix that worked for `getDevices` (e.g. `.../accounts/{id}`). */
+  private workingBase: string | null = null;
+  private workingUserId: string | null = null;
   private readonly tokenCachePath: string;
   /** Prevents concurrent token refreshes. */
   private refreshInFlight: Promise<void> | null = null;
@@ -109,29 +112,51 @@ export class HubspaceClient {
 
   /** Fetches all metadevices (with expanded state) for the account. */
   async getDevices(): Promise<HubspaceDevice[]> {
-    const accountId = await this.resolveAccountId();
-    const url = `/accounts/${accountId}/metadevices?expansions=state`;
-    this.log.info(`[Hubspace] Fetching devices for account ${accountId}…`);
+    const userId = await this.resolveAccountId();
+    const token = this.tokens!.accessToken;
+    const authHeader = {
+      Authorization: `Bearer ${token}`,
+      'User-Agent': 'Dart/3.3 (dart:io)',
+      'Accept': 'application/json',
+    };
 
-    try {
-      const res = await this.http.get<HubspaceDevice[]>(url);
-      this.log.info(`[Hubspace] Cloud returned ${res.data.length} metadevice(s).`);
-      return res.data;
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        this.log.error(
-          `[Hubspace] Devices request failed — status ${err.response?.status}, ` +
-          `body: ${JSON.stringify(err.response?.data)}`,
-        );
+    // Try each candidate URL pattern and return the first that succeeds.
+    const candidates: Array<{ label: string; url: string }> = [
+      // Pattern 1 – accounts path, api2.afero.net (original Afero OEM structure)
+      { label: 'api2/accounts', url: `${API_BASE}/accounts/${userId}/metadevices?expansions=state` },
+      // Pattern 2 – users path, api2.afero.net
+      { label: 'api2/users', url: `${API_BASE}/users/${userId}/metadevices?expansions=state` },
+      // Pattern 3 – Hubspace-branded API host, accounts path
+      { label: 'hubspace/accounts', url: `https://api.hubspaceconnect.com/v1/accounts/${userId}/metadevices?expansions=state` },
+      // Pattern 4 – Hubspace-branded API host, users path
+      { label: 'hubspace/users', url: `https://api.hubspaceconnect.com/v1/users/${userId}/metadevices?expansions=state` },
+      // Pattern 5 – no account/user in path (token carries identity)
+      { label: 'api2/flat', url: `${API_BASE}/metadevices?expansions=state` },
+    ];
+
+    for (const { label, url } of candidates) {
+      this.log.info(`[Hubspace] Trying device URL [${label}]: ${url}`);
+      try {
+        const res = await axios.get<HubspaceDevice[]>(url, { headers: authHeader, timeout: 20_000 });
+        this.log.info(`[Hubspace] ✓ [${label}] returned ${res.data.length} device(s).`);
+        // Cache the winning pattern for state reads/writes.
+        this.workingBase = url.replace(/\/metadevices.*$/, '');
+        this.workingUserId = userId;
+        return res.data;
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : '?';
+        const body = axios.isAxiosError(err) ? JSON.stringify(err.response?.data) : String(err);
+        this.log.warn(`[Hubspace] ✗ [${label}] status=${status} body=${body}`);
       }
-      throw err;
     }
+
+    throw new Error('[Hubspace] All device URL patterns failed — see log for details.');
   }
 
   /** Fetches the latest state for a single device. */
   async getDeviceState(deviceId: string): Promise<DeviceStateValue[]> {
-    const accountId = await this.resolveAccountId();
-    const url = `/accounts/${accountId}/metadevices/${deviceId}?expansions=state`;
+    const base = await this.ensureWorkingBase();
+    const url = `${base}/metadevices/${deviceId}?expansions=state`;
     this.dbg('GET STATE', deviceId);
 
     const res = await this.http.get<HubspaceDevice>(url);
@@ -147,19 +172,16 @@ export class HubspaceClient {
     deviceId: string,
     values: Partial<DeviceStateValue>[],
   ): Promise<void> {
-    const accountId = await this.resolveAccountId();
-    const url = `/accounts/${accountId}/metadevices/${deviceId}/state`;
-
     const payload = {
       metadeviceId: deviceId,
       values: values.map((v) => ({
         ...v,
-        lastUpdateTime: 0, // server will set the real timestamp
+        lastUpdateTime: 0,
       })),
     };
 
     this.dbg('PUT STATE', deviceId, JSON.stringify(values));
-    await this.http.put(url, payload);
+    await this.http.put(`${await this.ensureWorkingBase()}/metadevices/${deviceId}/state`, payload);
   }
 
   // ─── Authentication ──────────────────────────────────────────────────────────
@@ -260,6 +282,17 @@ export class HubspaceClient {
       }
     }
     return this.tokens!.accessToken;
+  }
+
+  // ─── Working-base resolution ─────────────────────────────────────────────────
+
+  /** Returns the base URL that succeeded during discovery, triggering discovery if needed. */
+  private async ensureWorkingBase(): Promise<string> {
+    if (this.workingBase) return this.workingBase;
+    // Discovery hasn't run yet (e.g. state poll before first getDevices call).
+    await this.getDevices();
+    if (!this.workingBase) throw new Error('[Hubspace] No working API base URL found.');
+    return this.workingBase;
   }
 
   // ─── Account resolution ──────────────────────────────────────────────────────
