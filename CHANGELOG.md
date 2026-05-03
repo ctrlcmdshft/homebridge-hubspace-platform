@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.18] - 2026-05-03
+
+### Changes
+
+- **logging:** log raw device state values on each poll cycle when debug mode is enabled — helps diagnose device state reading issues
+- **logging:** demote internal metadevice count to debug level; show cleaner "device(s)" wording in info logs
+
+---
+
 ## [1.0.17] - 2026-05-03
 
 ### Bug Fixes
