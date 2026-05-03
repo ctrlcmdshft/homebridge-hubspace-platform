@@ -1,0 +1,79 @@
+{
+  "pluginAlias": "HubspaceNew",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "## Hubspace New\n\nSign in with your Hubspace (Home Depot) account. Tokens are cached locally — you will **not** be re-prompted on every restart or daily.",
+  "footerDisplay": "See the [README](https://github.com/yourusername/homebridge-hubspace-new#readme) for full documentation and troubleshooting tips.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "default": "Hubspace"
+      },
+      "username": {
+        "title": "Hubspace Username (email)",
+        "type": "string",
+        "format": "email",
+        "placeholder": "you@example.com",
+        "required": true
+      },
+      "password": {
+        "title": "Hubspace Password",
+        "type": "string",
+        "required": true
+      },
+      "pollingInterval": {
+        "title": "Polling Interval (seconds)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 10,
+        "maximum": 600,
+        "description": "How often to poll Hubspace for device state updates. Lower values are more responsive but use more bandwidth. Default: 30 s."
+      },
+      "tokenCachePath": {
+        "title": "Token Cache Path (advanced)",
+        "type": "string",
+        "description": "Override the path for the cached auth token file. Leave blank to use the Homebridge storage directory (recommended)."
+      },
+      "debug": {
+        "title": "Enable Debug Logging",
+        "type": "boolean",
+        "default": false,
+        "description": "Log verbose API request/response details. Useful when troubleshooting connectivity issues."
+      }
+    },
+    "required": ["username", "password"]
+  },
+  "layout": [
+    {
+      "type": "fieldset",
+      "title": "Hubspace Account",
+      "items": [
+        {
+          "key": "username",
+          "type": "email"
+        },
+        {
+          "key": "password",
+          "type": "password"
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Behaviour",
+      "expandable": true,
+      "expanded": false,
+      "items": ["pollingInterval", "debug"]
+    },
+    {
+      "type": "fieldset",
+      "title": "Advanced",
+      "expandable": true,
+      "expanded": false,
+      "items": ["name", "tokenCachePath"]
+    }
+  ]
+}

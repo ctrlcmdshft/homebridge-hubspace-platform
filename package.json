@@ -1,0 +1,53 @@
+{
+  "name": "homebridge-hubspace-new",
+  "displayName": "Hubspace New",
+  "version": "1.0.0",
+  "description": "Modern, production-ready Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, and switches.",
+  "license": "MIT",
+  "author": "ctrlcmdshft",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "lint": "eslint src/ --ext .ts",
+    "lint:fix": "eslint src/ --ext .ts --fix",
+    "prepublishOnly": "npm run lint && npm run build",
+    "clean": "rm -rf dist/"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge",
+    "hubspace",
+    "afero",
+    "smart-home",
+    "home-depot",
+    "light",
+    "fan",
+    "outlet",
+    "switch"
+  ],
+  "engines": {
+    "node": ">=18.15.0",
+    "homebridge": ">=1.8.0"
+  },
+  "peerDependencies": {
+    "homebridge": ">=1.8.0"
+  },
+  "dependencies": {
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "@typescript-eslint/eslint-plugin": "^7.14.1",
+    "@typescript-eslint/parser": "^7.14.1",
+    "eslint": "^8.57.0",
+    "homebridge": "^1.8.4",
+    "typescript": "^5.5.2"
+  },
+  "homebridge": {
+    "name": "Hubspace New",
+    "alias": "HubspaceNew",
+    "type": "platform",
+    "configSchema": "config.schema.json"
+  }
+}

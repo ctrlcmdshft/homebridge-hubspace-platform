@@ -1,0 +1,30 @@
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Token cache (contains sensitive credentials — never commit)
+hubspace-tokens.json
+*.tokens.json
+
+# TypeScript cache
+*.tsbuildinfo
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
