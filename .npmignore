@@ -1,0 +1,13 @@
+# Source (dist/ is what consumers need)
+src/
+tsconfig.json
+.eslintrc.json
+
+# Dev/CI
+.github/
+.claude/
+*.local.json
+
+# Misc
+.DS_Store
+*.tsbuildinfo
