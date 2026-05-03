@@ -113,7 +113,7 @@ export class HubspaceClient {
       if (raw.typeId !== 'metadevice.device') continue;
       const deviceClass = raw.description?.device?.deviceClass;
       if (!deviceClass) continue;
-      this.log.info(`[Hubspace] DISCOVERY state sample for ${raw.id}: ${JSON.stringify((raw.state ?? []).slice(0, 3))}`);
+      this.log.info(`[Hubspace] DISCOVERY state for ${raw.id}: ${JSON.stringify(raw.state).slice(0, 800)}`);
 
       devices.push({
         id: raw.id,
@@ -122,7 +122,7 @@ export class HubspaceClient {
         deviceClass,
         manufacturerName: raw.description?.device?.manufacturerName,
         model: raw.description?.device?.model,
-        values: raw.state ?? [],
+        values: Array.isArray(raw.state) ? raw.state : [],
       });
     }
 
@@ -152,8 +152,8 @@ export class HubspaceClient {
     const res = await this.http.get<HubspaceMetadeviceRaw>(
       `/accounts/${accountId}/metadevices/${deviceId}?expansions=state`,
     );
-    this.log.info(`[Hubspace] STATE sample for ${deviceId}: ${JSON.stringify((res.data.state ?? []).slice(0, 3))}`);
-    return res.data.state ?? [];
+    this.log.info(`[Hubspace] STATE for ${deviceId}: ${JSON.stringify(res.data.state).slice(0, 800)}`);
+    return Array.isArray(res.data.state) ? res.data.state : [];
   }
 
   async setDeviceState(

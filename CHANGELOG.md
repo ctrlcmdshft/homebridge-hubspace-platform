@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.23] - 2026-05-03
+
+### Changes
+
+- **diagnostics:** log raw `state` field shape to identify correct structure; guard against non-array state
+
+---
+
 ## [1.0.22] - 2026-05-03
 
 ### Bug Fixes
