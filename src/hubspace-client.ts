@@ -252,71 +252,90 @@ export class HubspaceClient {
   private async resolveAccountId(): Promise<string> {
     if (this.accountId) return this.accountId;
 
-    // Primary: decode account ID directly from the JWT — no extra API call needed.
-    const fromJwt = this.extractAccountIdFromJwt();
-    if (fromJwt) {
-      this.accountId = fromJwt;
-      this.log.debug(`[Hubspace] Account ID from token: ${this.accountId}`);
+    const token = this.tokens!.accessToken;
+    const authHeader = { Authorization: `Bearer ${token}`, 'User-Agent': 'Dart/3.3 (dart:io)' };
+
+    // ── Step 1: explicit JWT claims ──────────────────────────────────────────
+    const jwtPayload = this.decodeJwt(token);
+    if (this.debug) {
+      this.log.debug('[Hubspace] JWT payload:', JSON.stringify(jwtPayload, null, 2));
+    }
+    const explicit =
+      (jwtPayload?.['account_id'] as string | undefined) ??
+      (jwtPayload?.['accountId'] as string | undefined) ??
+      (jwtPayload?.['afero_account_id'] as string | undefined) ??
+      (jwtPayload?.['custom:account_id'] as string | undefined);
+    if (explicit) {
+      this.log.info(`[Hubspace] Account ID from JWT claim: ${explicit}`);
+      this.accountId = explicit;
       return this.accountId;
     }
 
-    // Fallback: ask the accounts API.
-    this.log.debug('[Hubspace] Account ID not in token — querying accounts API…');
+    // ── Step 2: Keycloak userinfo endpoint (contains additional user attributes) ──
     try {
-      const res = await axios.get<AferoAccount[]>(`${ACCOUNT_API}/accounts`, {
-        headers: {
-          Authorization: `Bearer ${this.tokens!.accessToken}`,
-          'User-Agent': 'Dart/3.3 (dart:io)',
-        },
-        timeout: 15_000,
-      });
-      if (res.data && res.data.length > 0) {
-        this.accountId = res.data[0].accountId;
-        this.log.debug(`[Hubspace] Account ID from API: ${this.accountId}`);
+      const uiRes = await axios.get<Record<string, unknown>>(
+        'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/userinfo',
+        { headers: authHeader, timeout: 15_000 },
+      );
+      this.log.info('[Hubspace] Userinfo response:', JSON.stringify(uiRes.data));
+      const ui = uiRes.data;
+      const fromUi =
+        (ui['account_id'] as string | undefined) ??
+        (ui['accountId'] as string | undefined) ??
+        (ui['afero_account_id'] as string | undefined);
+      if (fromUi) {
+        this.log.info(`[Hubspace] Account ID from userinfo: ${fromUi}`);
+        this.accountId = fromUi;
         return this.accountId;
       }
     } catch (err) {
-      this.log.warn('[Hubspace] Accounts API failed:', this.extractErrorMessage(err));
+      this.log.warn('[Hubspace] Userinfo endpoint failed:', this.extractErrorMessage(err));
     }
 
-    throw new Error(
-      '[Hubspace] Could not determine Afero account ID. ' +
-      'Enable debug logging to inspect the JWT claims.',
-    );
+    // ── Step 3: /v1/accounts listing ─────────────────────────────────────────
+    try {
+      const acRes = await axios.get<AferoAccount[]>(`${API_BASE}/accounts`, {
+        headers: authHeader,
+        timeout: 15_000,
+      });
+      this.log.info('[Hubspace] Accounts response:', JSON.stringify(acRes.data));
+      if (acRes.data?.length > 0) {
+        this.accountId = acRes.data[0].accountId;
+        this.log.info(`[Hubspace] Account ID from /accounts: ${this.accountId}`);
+        return this.accountId;
+      }
+    } catch (err) {
+      this.log.warn(
+        '[Hubspace] /accounts failed:',
+        this.extractErrorMessage(err),
+        axios.isAxiosError(err) ? JSON.stringify(err.response?.data) : '',
+      );
+    }
+
+    // ── Step 4: derive from JWT sub (last UUID segment after splitting on ':') ──
+    const sub = jwtPayload?.['sub'] as string | undefined;
+    if (sub) {
+      // sub format from Keycloak: "f:<realm-uuid>:<user-uuid>"
+      // Try each colon-separated UUID segment, largest granularity last.
+      const segments = sub.split(':').filter(s => s.length > 8);
+      this.log.warn(
+        `[Hubspace] Falling back to sub segments: ${segments.join(', ')}`,
+      );
+      // Use the first non-"f" segment (the realm/partner UUID) as the account.
+      if (segments.length > 0) {
+        this.accountId = segments[0];
+        return this.accountId;
+      }
+    }
+
+    throw new Error('[Hubspace] Could not determine Afero account ID — check logs above for clues.');
   }
 
-  /**
-   * Decodes the JWT access token payload and tries to extract the Afero
-   * account ID from known claim names.  Logs all claims in debug mode.
-   */
-  private extractAccountIdFromJwt(): string | null {
-    if (!this.tokens?.accessToken) return null;
+  private decodeJwt(token: string): Record<string, unknown> | null {
     try {
-      const parts = this.tokens.accessToken.split('.');
+      const parts = token.split('.');
       if (parts.length !== 3) return null;
-
-      const payload = JSON.parse(
-        Buffer.from(parts[1], 'base64url').toString('utf-8'),
-      ) as Record<string, unknown>;
-
-      if (this.debug) {
-        this.log.debug('[Hubspace] JWT claims:', JSON.stringify(payload, null, 2));
-      }
-
-      // Try explicit account ID claims first.
-      const explicit =
-        (payload['account_id'] as string | undefined) ??
-        (payload['accountId'] as string | undefined) ??
-        (payload['afero_account_id'] as string | undefined) ??
-        (payload['custom:account_id'] as string | undefined);
-      if (explicit) return explicit;
-
-      // Fall back to 'sub'. Keycloak encodes it as "f:<realm-uuid>:<user-uuid>",
-      // so take only the last colon-separated segment (the actual Afero user UUID).
-      const sub = payload['sub'] as string | undefined;
-      if (sub) return sub.includes(':') ? sub.split(':').pop()! : sub;
-
-      return null;
+      return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8')) as Record<string, unknown>;
     } catch {
       return null;
     }
