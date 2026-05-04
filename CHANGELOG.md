@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.17] - 2026-05-04
+
+### Bug Fixes
+
+- **fans:** set fan speed slider to 25/50/75/100 only — matches the Hubspace app's 4-step model; on/off is handled exclusively by the Active toggle, mirroring the app's independent speed and power controls
+
+---
+
 ## [1.1.16] - 2026-05-04
 
 ### Bug Fixes
