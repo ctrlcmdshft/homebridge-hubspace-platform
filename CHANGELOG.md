@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.5] - 2026-05-04
+
+### Changes
+
+- **ui:** add Hubspace app icon shown in Homebridge plugin list
+- **ui:** consolidate Behaviour and Advanced config sections into a single Advanced fieldset
+- **docs:** Node.js requirement now states "all active LTS releases" to stay accurate as new LTS versions land
+- **docs:** link MIT license text in README footer
+- **packaging:** exclude test files and Jest config from npm tarball
+
+---
+
 ## [1.1.4] - 2026-05-04
 
 ### Changes
