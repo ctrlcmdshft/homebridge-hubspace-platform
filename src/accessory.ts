@@ -119,7 +119,7 @@ export abstract class BaseHubspaceAccessory {
     const existing = this.findValue(functionClass, functionInstance);
     return {
       functionClass,
-      functionInstance: existing?.functionInstance ?? functionInstance ?? 'primary',
+      functionInstance: existing !== undefined ? existing.functionInstance : (functionInstance ?? 'primary'),
       value,
     };
   }

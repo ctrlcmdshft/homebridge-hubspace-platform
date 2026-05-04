@@ -41,7 +41,7 @@ export interface KeycloakTokenResponse {
 // ─── Afero / Hubspace API ─────────────────────────────────────────────────────
 export interface DeviceStateValue {
   functionClass: string;
-  functionInstance: string;
+  functionInstance: string | undefined;
   value: string | number | boolean;
   lastUpdateTime?: number;
 }
