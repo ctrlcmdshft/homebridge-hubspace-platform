@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.0.31] - 2026-05-03
+
+### Changes
+
+- **auth:** store username in token cache — if the configured account changes, the stale token file is automatically discarded and a fresh login performed rather than silently failing
+
+---
+
+## [1.0.30] - 2026-05-03
+
+### Changes
+
+- **debug:** verbose per-poll state logging is now gated behind the existing `debug` toggle in settings — logs are clean by default, enable debug to see full state on every cycle
+
+---
+
+## [1.0.29] - 2026-05-03
+
+### Changes
+
+- **logging:** remove diagnostic info logs now that state reading is stable — logs are clean again
+
+---
+
 ## [1.0.28] - 2026-05-03
 
 ### Bug Fixes

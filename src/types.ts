@@ -17,6 +17,8 @@ export interface HubspaceConfig {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export interface AuthTokens {
+  /** Username the tokens were issued for — used to detect account changes. */
+  username?: string;
   accessToken: string;
   refreshToken: string;
   /** Unix timestamp (ms) when the access token expires. */

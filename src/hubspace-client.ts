@@ -113,7 +113,6 @@ export class HubspaceClient {
       if (raw.typeId !== 'metadevice.device') continue;
       const deviceClass = raw.description?.device?.deviceClass;
       if (!deviceClass) continue;
-      this.log.info(`[Hubspace] DISCOVERY state for ${raw.id}: ${JSON.stringify(raw.state?.values).slice(0, 2000)}`);
 
       devices.push({
         id: raw.id,
@@ -359,6 +358,7 @@ export class HubspaceClient {
       ? Number.MAX_SAFE_INTEGER
       : now + data.refresh_expires_in * 1000;
     this.tokens = {
+      username: this.username,
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       expiresAt: now + data.expires_in * 1000,
@@ -370,7 +370,13 @@ export class HubspaceClient {
     try {
       if (!fs.existsSync(this.tokenCachePath)) return;
       const raw = fs.readFileSync(this.tokenCachePath, 'utf-8');
-      this.tokens = JSON.parse(raw) as AuthTokens;
+      const cached = JSON.parse(raw) as AuthTokens;
+      if (cached.username && cached.username !== this.username) {
+        this.log.info('[Hubspace] Cached tokens belong to a different account — discarding.');
+        fs.unlinkSync(this.tokenCachePath);
+        return;
+      }
+      this.tokens = cached;
       this.log.debug('[Hubspace] Loaded token cache from disk.');
     } catch {
       this.log.debug('[Hubspace] Could not read token cache — ignoring.');
