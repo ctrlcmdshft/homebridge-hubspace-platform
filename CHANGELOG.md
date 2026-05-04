@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.15] - 2026-05-04
+
+### Bug Fixes
+
+- **fans:** fix rotation speed slider capping at 75% — changed minValue from 25 to 0 so HomeKit renders all four steps (0/25/50/75/100); setting speed to 0 now turns the fan off via the Active characteristic
+
+---
+
 ## [1.1.14] - 2026-05-04
 
 ### Bug Fixes

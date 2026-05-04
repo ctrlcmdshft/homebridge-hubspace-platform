@@ -314,7 +314,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     // Rotation speed — 4 discrete steps.
     if (this.findValue(FC.FAN_SPEED)) {
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-        .setProps({ minValue: 25, maxValue: 100, minStep: 25 })
+        .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
         .onGet(() => this.getFanSpeed())
         .onSet(async (v) => this.setFanSpeed(v as number));
     }
@@ -378,6 +378,17 @@ export class FanAccessory extends BaseHubspaceAccessory {
   }
 
   private async setFanSpeed(percent: number): Promise<void> {
+    if (percent === 0) {
+      const fanPower = this.findFanPowerValue();
+      await this.setDeviceValues([
+        this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance),
+      ]);
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.Active,
+        this.platform.Characteristic.Active.INACTIVE,
+      );
+      return;
+    }
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
