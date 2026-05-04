@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.4] - 2026-05-04
+
+### Changes
+
+- **tests:** add Jest unit test suite (58 tests) covering color conversions, fan speed mapping, and Kelvin/mired conversions
+- **refactor:** extract pure utility functions to `src/utils.ts` for testability
+- **ci:** run `npm test` on every build across Node 20/22/24
+
+---
+
 ## [1.1.3] - 2026-05-04
 
 ### Changes
