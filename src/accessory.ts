@@ -78,9 +78,9 @@ function hubspeedToPercent(value: string): number {
   }
   const n = parseInt(value, 10);
   if (!isNaN(n)) {
-    if (n >= 0 && n <= 100) return n;        // already a percentage
-    if (n >= 1 && n <= 6) return Math.round((n / 6) * 100);
-    if (n >= 1 && n <= 4) return Math.round((n / 4) * 100);
+    if (n >= 0 && n <= 100) return n;             // already a percentage
+    if (n >= 5 && n <= 6) return Math.round((n / 6) * 100);  // 6-speed
+    if (n >= 1 && n <= 4) return Math.round((n / 4) * 100);  // 4-speed
   }
   return 50;
 }
@@ -101,8 +101,8 @@ function percentToHubspeed(percent: number, currentValue: string): string {
   }
   const n = parseInt(currentValue, 10);
   if (!isNaN(n)) {
-    if (n >= 1 && n <= 6) return Math.round((percent / 100) * 6).toString();
-    if (n >= 1 && n <= 4) return Math.round((percent / 100) * 4).toString();
+    if (n >= 5 && n <= 6) return Math.round((percent / 100) * 6).toString();  // 6-speed
+    if (n >= 1 && n <= 4) return Math.round((percent / 100) * 4).toString();  // 4-speed
   }
   return Math.round(percent).toString();
 }

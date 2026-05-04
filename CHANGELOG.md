@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.27] - 2026-05-03
+
+### Bug Fixes
+
+- **fan:** fix speed conversion for 4-speed fans — the 6-speed range check was shadowing the 4-speed check, causing speed 1 (25%) to map to speed 2 (50%); ranges are now non-overlapping
+
+---
+
 ## [1.0.26] - 2026-05-03
 
 ### Bug Fixes
