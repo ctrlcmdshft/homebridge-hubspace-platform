@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.2] - 2026-05-04
+
+### Bug Fixes
+
+- **debug:** expose `debug` flag correctly on platform so verbose state logging works when enabled in settings
+- **ci:** update GitHub Actions to use Node.js 24 runner to fix deprecation warnings
+
+---
+
 ## [1.1.1] - 2026-05-04
 
 ### Bug Fixes
