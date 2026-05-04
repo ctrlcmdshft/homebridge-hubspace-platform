@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.1] - 2026-05-04
+
+### Bug Fixes
+
+- **fan:** use Afero semantic speed value names (`fan-speed-025`, `fan-speed-050`, `fan-speed-075`, `fan-speed-100`) for both reading and writing fan speed — the API rejected raw numeric values with a 400 error
+- **fan:** poll all merged device IDs on each cycle so fan speed and direction state persist correctly between polls
+- **fan:** constrain rotation speed slider to 4 discrete steps (25 / 50 / 75 / 100%)
+- **auth:** auto-discard token cache when configured account username changes
+- **state:** correctly read device state from `state.values` field in Afero API response
+- **accessories:** fix `updateCharacteristic` crash caused by ES2022 class-field initializer ordering
+- **discovery:** merge `fan` and `ceiling-fan` metadevice state so all capabilities are available
+
+---
+
 ## [1.0.32] - 2026-05-04
 
 ### Bug Fixes
