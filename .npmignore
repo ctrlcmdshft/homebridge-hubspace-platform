@@ -15,3 +15,4 @@ package-lock.json
 discover.mjs
 .gitignore
 .env.example
+.story/
