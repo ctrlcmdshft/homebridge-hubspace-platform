@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.12] - 2026-05-04
+
+### Bug Fixes
+
+- **packaging:** remove `homebridge` from `peerDependencies` — npm v7+ auto-installs peer dependencies which caused the Homebridge plugin verifier to flag homebridge and hap-nodejs as installed dependencies; homebridge is now declared only in `devDependencies` (for local TypeScript builds) and `engines` (for the version requirement), matching the standard verified plugin pattern
+
+---
+
 ## [1.1.11] - 2026-05-04
 
 ### Bug Fixes
