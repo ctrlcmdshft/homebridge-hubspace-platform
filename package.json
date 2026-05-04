@@ -8,7 +8,7 @@
   "homepage": "https://github.com/ctrlcmdshft/homebridge-hubspace-platform#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ctrlcmdshft/homebridge-hubspace-platform.git"
+    "url": "git+https://github.com/ctrlcmdshft/homebridge-hubspace-platform.git"
   },
   "bugs": {
     "url": "https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues"
