@@ -66,17 +66,10 @@
     },
     {
       "type": "fieldset",
-      "title": "Behaviour",
-      "expandable": true,
-      "expanded": false,
-      "items": ["pollingInterval", "debug"]
-    },
-    {
-      "type": "fieldset",
       "title": "Advanced",
       "expandable": true,
       "expanded": false,
-      "items": ["name", "tokenCachePath"]
+      "items": ["pollingInterval", "debug", "name", "tokenCachePath"]
     }
   ]
 }
