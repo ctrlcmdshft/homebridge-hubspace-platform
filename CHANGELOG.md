@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.26] - 2026-05-03
+
+### Bug Fixes
+
+- **fan:** constrain rotation speed slider to 4 discrete steps (25 / 50 / 75 / 100%) matching the physical fan's 4-speed capability
+
+---
+
 ## [1.0.25] - 2026-05-03
 
 ### Bug Fixes

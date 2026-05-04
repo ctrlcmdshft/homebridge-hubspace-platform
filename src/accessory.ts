@@ -387,9 +387,10 @@ export class FanAccessory extends BaseHubspaceAccessory {
       .onGet(() => this.getFanActive())
       .onSet(async (v) => this.setFanActive(v as number, fanPower?.functionInstance));
 
-    // Rotation speed.
+    // Rotation speed — 4 discrete steps.
     if (this.findValue(FC.FAN_SPEED)) {
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+        .setProps({ minValue: 25, maxValue: 100, minStep: 25 })
         .onGet(() => this.getFanSpeed())
         .onSet(async (v) => this.setFanSpeed(v as number));
     }
