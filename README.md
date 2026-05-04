@@ -179,4 +179,4 @@ USERNAME=you@example.com PASSWORD=yourpass node discover.mjs
 
 ## License
 
-MIT © [ctrlcmdshft](https://github.com/ctrlcmdshft)
+[MIT](./LICENSE) © [ctrlcmdshft](https://github.com/ctrlcmdshft)
