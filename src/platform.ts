@@ -22,6 +22,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   private readonly cachedAccessories = new Map<string, PlatformAccessory>();
 
   public readonly client: HubspaceClient;
+  public readonly debug: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly cfg: HubspaceConfig;
@@ -34,6 +35,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
     this.cfg = config as HubspaceConfig;
+    this.debug = this.cfg.debug ?? false;
 
     // Validate required config.
     if (!this.cfg.username || !this.cfg.password) {

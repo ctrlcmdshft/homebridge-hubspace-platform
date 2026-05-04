@@ -42,7 +42,7 @@
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log verbose API request/response details. Useful when troubleshooting connectivity issues."
+        "description": "Log verbose state values on every poll cycle and API request/response details. Useful when troubleshooting device control issues."
       }
     },
     "required": ["username", "password"]
