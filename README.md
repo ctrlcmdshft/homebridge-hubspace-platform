@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/badge/homebridge-2.0%20ready-blueviolet?logo=homebridge" alt="Homebridge 2.0 ready" />
   </a>
   <a href="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml">
-    <img src="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml/badge.svg" alt="Build" />
+    <img src="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml/badge.svg" alt="Build, Lint, and Test" />
   </a>
 </p>
 
@@ -40,7 +40,7 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 ## Requirements
 
-- **Node.js** 20, 22, or 24
+- **Node.js** all active LTS releases (currently 20, 22, and 24)
 - **Homebridge** ≥ 1.8.0 (v2.x supported)
 - A Hubspace / Home Depot account with at least one paired device
 
