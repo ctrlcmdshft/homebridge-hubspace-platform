@@ -1,10 +1,22 @@
 # Changelog
 
+## [1.1.16] - 2026-05-04
+
+### Bug Fixes
+
+- **homekit:** optimistic state updates — HomeKit UI now reflects commands instantly instead of waiting for the next poll cycle; a targeted re-poll runs 3 s after each command to reconcile with cloud state, and reverts immediately if the API call fails
+
+---
+
 ## [1.1.15] - 2026-05-04
 
 ### Bug Fixes
 
 - **fans:** fix rotation speed slider capping at 75% — changed minValue from 25 to 0 so HomeKit renders all four steps (0/25/50/75/100); setting speed to 0 now turns the fan off via the Active characteristic
+
+### Documentation
+
+- **config:** add placeholder text to password field so the Homebridge UI shows example input
 
 ---
 
