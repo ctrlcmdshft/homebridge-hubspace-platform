@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.6] - 2026-05-04
+
+### Bug Fixes
+
+- **ui:** add `homebridge.icon` URL to package.json so the Hubspace icon renders correctly in the Homebridge plugin list
+
+---
+
 ## [1.1.5] - 2026-05-04
 
 ### Changes
