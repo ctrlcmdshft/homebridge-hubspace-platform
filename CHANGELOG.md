@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.3] - 2026-05-04
+
+### Changes
+
+- **packaging:** exclude `.story/` directory from npm tarball
+- **docs:** add hardware-tested status to supported devices table; correct Node.js requirement to 20/22/24
+- **config:** add `strictValidation` and `additionalProperties: false` to config schema
+
+---
+
 ## [1.1.2] - 2026-05-04
 
 ### Bug Fixes
