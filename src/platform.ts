@@ -23,6 +23,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   public readonly client: HubspaceClient;
   public readonly debug: boolean;
+  private readonly configured: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly cfg: HubspaceConfig;
@@ -37,16 +38,18 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.cfg = config as HubspaceConfig;
     this.debug = this.cfg.debug ?? false;
 
-    // Validate required config.
     if (!this.cfg.username || !this.cfg.password) {
-      this.log.error(
-        '[Hubspace] Missing username or password in config — plugin disabled.',
+      this.log.warn(
+        '[Hubspace] No credentials configured — open the plugin settings in the Homebridge UI ' +
+        'and enter your Hubspace username and password, then restart Homebridge.',
       );
-      // Assign a stub client to avoid crashes during initialisation.
+      this.configured = false;
       this.client = null as unknown as HubspaceClient;
+      this.api.on('didFinishLaunching', () => this.removeAllCachedAccessories());
       return;
     }
 
+    this.configured = true;
     this.client = new HubspaceClient(
       this.cfg.username,
       this.cfg.password,
@@ -58,7 +61,6 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       },
     );
 
-    // Homebridge fires this once all cached accessories are restored.
     this.api.on('didFinishLaunching', () => this.onReady());
     this.api.on('shutdown', () => this.onShutdown());
 
@@ -80,6 +82,14 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   }
 
   // ─── Start-up ─────────────────────────────────────────────────────────────────
+
+  private removeAllCachedAccessories(): void {
+    const stale = [...this.cachedAccessories.values()];
+    if (stale.length > 0) {
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, stale);
+      this.log.info(`[Hubspace] Removed ${stale.length} cached accessory(ies) — plugin is not configured.`);
+    }
+  }
 
   private async onReady(): Promise<void> {
     try {

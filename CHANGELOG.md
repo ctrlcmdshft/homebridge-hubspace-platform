@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.14] - 2026-05-04
+
+### Bug Fixes
+
+- **platform:** disable gracefully when credentials are not configured — if username or password are missing the plugin now logs a clear setup prompt, skips discovery and polling, and removes any previously cached accessories from HomeKit so they don't linger as "No Response"
+
+---
+
 ## [1.1.13] - 2026-05-04
 
 ### Bug Fixes
