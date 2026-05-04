@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.1.10] - 2026-05-04
+
+### Bug Fixes
+
+- **lights:** debounce brightness slider to eliminate lag — HomeKit fires a brightness update on every drag tick; now waits 300 ms after the last movement before sending a single write with the final value
+
+---
+
+## [1.1.9] - 2026-05-04
+
+### Bug Fixes
+
+- **lights:** fix brightness slider not dimming — devices like the Ceiling Light report their brightness capability with no `functionInstance`; the previous code substituted `'primary'` which the API does not recognise, causing the write to be silently ignored and the light to turn on at its default level instead of the requested brightness
+
+---
+
+## [1.1.8] - 2026-05-04
+
+### Bug Fixes
+
+- **lights:** fix brightness slider turning light on instead of dimming — brightness was sent to the API as a string value instead of a number; also, when the light was off, HomeKit's separate power-on and brightness writes could arrive out of order causing the device to ignore the brightness; both are now sent together in a single request
+
+---
+
 ## [1.1.7] - 2026-05-04
 
 ### Bug Fixes
