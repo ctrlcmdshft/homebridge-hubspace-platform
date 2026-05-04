@@ -100,14 +100,31 @@ export abstract class BaseHubspaceAccessory {
   protected async setDeviceValues(
     values: Partial<DeviceStateValue>[],
   ): Promise<void> {
+    this.applyOptimisticUpdate(values);
     try {
       await this.platform.client.setDeviceState(this.device.id, values);
+      this.platform.scheduleQuickPoll(this.device.id, 3000);
     } catch (err) {
       this.log.error(
         `[Hubspace] Failed to set state for "${this.device.friendlyName}":`, err,
       );
-      // Don't throw — let polling reconcile the state.
+      // Revert optimistic state immediately on failure.
+      this.platform.scheduleQuickPoll(this.device.id, 0);
     }
+  }
+
+  private applyOptimisticUpdate(patches: Partial<DeviceStateValue>[]): void {
+    for (const patch of patches) {
+      if (!patch.functionClass) continue;
+      const key = `${patch.functionClass}:${patch.functionInstance}`;
+      const existing = this.stateMap.get(key);
+      if (existing) {
+        this.stateMap.set(key, { ...existing, value: patch.value as DeviceStateValue['value'] });
+      } else {
+        this.stateMap.set(key, patch as DeviceStateValue);
+      }
+    }
+    this.pushCharacteristics();
   }
 
   /** Build a minimal state patch using the existing functionInstance. */
@@ -383,10 +400,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
       await this.setDeviceValues([
         this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance),
       ]);
-      this.fanSvc.updateCharacteristic(
-        this.platform.Characteristic.Active,
-        this.platform.Characteristic.Active.INACTIVE,
-      );
       return;
     }
     const current = this.findValue(FC.FAN_SPEED);

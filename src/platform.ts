@@ -220,6 +220,17 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     }
   }
 
+  scheduleQuickPoll(deviceId: string, delayMs: number): void {
+    setTimeout(() => {
+      const handler = this.handlers.get(deviceId);
+      if (!handler) return;
+      const allIds = handler.device.allIds ?? [deviceId];
+      this.client.getDeviceState(allIds)
+        .then(values => handler.updateState(values))
+        .catch(err => this.log.warn(`[Hubspace] Quick-poll failed for ${deviceId}: ${err}`));
+    }, delayMs);
+  }
+
   private async pollDevices(): Promise<void> {
     if (this.handlers.size === 0) return;
 
