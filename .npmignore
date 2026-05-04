@@ -1,7 +1,12 @@
 # Source (dist/ is what consumers need)
 src/
 tsconfig.json
+tsconfig.test.json
 .eslintrc.json
+
+# Tests
+test/
+jest.config.js
 
 # Dev/CI
 .github/
