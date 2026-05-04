@@ -106,12 +106,12 @@ export const SUPPORTED_DEVICE_CLASSES = new Set([
 // ─── Function class constants (Hubspace / Afero capability names) ─────────────
 export const FC = {
   POWER: 'power',
+  TOGGLE: 'toggle',
   BRIGHTNESS: 'brightness',
   COLOR_TEMP: 'color-temperature',
   COLOR_RGB: 'color-rgb',
   COLOR_MODE: 'color-mode',
   FAN_SPEED: 'fan-speed',
-  FAN_REVERSE: 'fan-reverse',
 } as const;
 
 export type FunctionClass = (typeof FC)[keyof typeof FC];

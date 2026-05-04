@@ -29,10 +29,11 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 | Device | Features | Status |
 | --- | --- | --- |
-| Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · direction · light on/off · brightness | Tested with hardware |
+| Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · light on/off · brightness | Tested with hardware |
 | Defiant Smart Plug | On/off | Implemented, untested |
 | Hubspace Smart Switch | On/off | Implemented, untested |
-| Hubspace Smart Light | On/off · brightness · color temperature · RGB color | Implemented, untested |
+| Hubspace Smart Light | On/off · brightness | Implemented, untested |
+| Hubspace Smart Light (color) | Color temperature · RGB color | Implemented, untested — API field names unverified |
 
 > **Note:** Only the Hampton Bay ceiling fan has been tested with real hardware. Other device types are implemented based on the Afero API but have not been verified. If you own one of these devices and can confirm it works (or find a bug), please open an issue.
 

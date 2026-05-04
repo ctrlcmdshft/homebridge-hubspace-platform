@@ -319,12 +319,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
         .onSet(async (v) => this.setFanSpeed(v as number));
     }
 
-    // Rotation direction.
-    if (this.findValue(FC.FAN_REVERSE)) {
-      this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationDirection)
-        .onGet(() => this.getFanDirection())
-        .onSet(async (v) => this.setFanDirection(v as number));
-    }
 
     // ── Optional light kit service ────────────────────────────────────────────
     const lightPower = this.findValue(FC.POWER, 'light-power');
@@ -389,23 +383,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
   }
 
-  private getFanDirection(): CharacteristicValue {
-    const v = this.findValue(FC.FAN_REVERSE);
-    // Hubspace "reverse" → winter mode (clockwise from below) → HomeKit CLOCKWISE.
-    const reversed = v?.value === 'reverse' || v?.value === 'true' || v?.value === true;
-    return reversed
-      ? this.platform.Characteristic.RotationDirection.CLOCKWISE
-      : this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE;
-  }
-
-  private async setFanDirection(hkDir: number): Promise<void> {
-    const reversed =
-      hkDir === this.platform.Characteristic.RotationDirection.CLOCKWISE;
-    await this.setDeviceValues([
-      this.buildPatch(FC.FAN_REVERSE, reversed ? 'reverse' : 'forward'),
-    ]);
-  }
-
   // ── Light-kit getters / setters ───────────────────────────────────────────────
 
   private getLightPower(): CharacteristicValue {
@@ -451,10 +428,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
       this.fanSvc.updateCharacteristic(
         this.platform.Characteristic.RotationSpeed, this.getFanSpeed());
     }
-    if (this.findValue(FC.FAN_REVERSE)) {
-      this.fanSvc.updateCharacteristic(
-        this.platform.Characteristic.RotationDirection, this.getFanDirection());
-    }
 
     if (this.lightSvc) {
       this.lightSvc.updateCharacteristic(
@@ -497,12 +470,13 @@ export class OutletAccessory extends BaseHubspaceAccessory {
   }
 
   private getPower(): CharacteristicValue {
-    const v = this.findValue(FC.POWER);
+    const v = this.findValue(FC.POWER) ?? this.findValue(FC.TOGGLE);
     return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
   }
 
   private async setPower(on: boolean): Promise<void> {
-    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
+    const fc = this.findValue(FC.POWER) ? FC.POWER : FC.TOGGLE;
+    await this.setDeviceValues([this.buildPatch(fc, on ? 'on' : 'off')]);
   }
 
   protected pushCharacteristics(): void {

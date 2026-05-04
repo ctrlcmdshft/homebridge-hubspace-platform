@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.13] - 2026-05-04
+
+### Bug Fixes
+
+- **outlets:** add `toggle` function class fallback — some Hubspace outlets report their power state under `toggle` instead of `power`; the plugin now checks both so these devices respond correctly
+- **fans:** remove fan direction (reverse) control — direction is managed by a hardware pull chain or wall switch on most Hubspace fans and is not reliably controllable via the WiFi adapter; removed to avoid a misleading control in the Home app
+
+### Documentation
+
+- **readme:** split smart light color features into a separate row and mark color temperature and RGB as unverified API field names
+- **readme:** remove fan direction from supported features list
+
+---
+
 ## [1.1.12] - 2026-05-04
 
 ### Bug Fixes
