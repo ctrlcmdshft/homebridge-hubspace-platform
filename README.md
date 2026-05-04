@@ -43,6 +43,7 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 - **Node.js** all active LTS releases (currently 20, 22, and 24)
 - **Homebridge** ≥ 1.8.0 (v2.x supported)
 - A Hubspace / Home Depot account with at least one paired device
+- **2FA must be disabled** — the Hubspace API client used by this plugin does not support interactive two-factor authentication. If your account has 2FA enabled via email code, authentication will fail. Native 2FA support is being investigated; follow the repo for updates.
 
 ---
 
