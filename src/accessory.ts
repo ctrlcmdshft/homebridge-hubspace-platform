@@ -208,15 +208,20 @@ export class LightAccessory extends BaseHubspaceAccessory {
     await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
   }
 
+  private brightnessTimer: ReturnType<typeof setTimeout> | null = null;
+
   private async setBrightness(value: number): Promise<void> {
-    const rounded = Math.round(value);
-    const patches: Partial<DeviceStateValue>[] = [
-      this.buildPatch(FC.BRIGHTNESS, rounded),
-    ];
-    if (rounded > 0 && !this.getPower()) {
-      patches.push(this.buildPatch(FC.POWER, 'on'));
-    }
-    await this.setDeviceValues(patches);
+    if (this.brightnessTimer) clearTimeout(this.brightnessTimer);
+    this.brightnessTimer = setTimeout(async () => {
+      const rounded = Math.round(value);
+      const patches: Partial<DeviceStateValue>[] = [
+        this.buildPatch(FC.BRIGHTNESS, rounded),
+      ];
+      if (rounded > 0 && !this.getPower()) {
+        patches.push(this.buildPatch(FC.POWER, 'on'));
+      }
+      await this.setDeviceValues(patches);
+    }, 300);
   }
 
   private async setColorTemp(mireds: number): Promise<void> {
@@ -419,16 +424,21 @@ export class FanAccessory extends BaseHubspaceAccessory {
     return v ? Math.round(Number(v.value)) : 100;
   }
 
+  private lightBrightnessTimer: ReturnType<typeof setTimeout> | null = null;
+
   private async setLightBrightness(value: number): Promise<void> {
-    const rounded = Math.round(value);
-    const current = this.findValue(FC.BRIGHTNESS, 'light-brightness') ?? this.findValue(FC.BRIGHTNESS);
-    const patches: Partial<DeviceStateValue>[] = [
-      this.buildPatch(FC.BRIGHTNESS, rounded, current?.functionInstance),
-    ];
-    if (rounded > 0 && !this.getLightPower()) {
-      patches.push(this.buildPatch(FC.POWER, 'on', 'light-power'));
-    }
-    await this.setDeviceValues(patches);
+    if (this.lightBrightnessTimer) clearTimeout(this.lightBrightnessTimer);
+    this.lightBrightnessTimer = setTimeout(async () => {
+      const rounded = Math.round(value);
+      const current = this.findValue(FC.BRIGHTNESS, 'light-brightness') ?? this.findValue(FC.BRIGHTNESS);
+      const patches: Partial<DeviceStateValue>[] = [
+        this.buildPatch(FC.BRIGHTNESS, rounded, current?.functionInstance),
+      ];
+      if (rounded > 0 && !this.getLightPower()) {
+        patches.push(this.buildPatch(FC.POWER, 'on', 'light-power'));
+      }
+      await this.setDeviceValues(patches);
+    }, 300);
   }
 
   // ── Push ──────────────────────────────────────────────────────────────────────
