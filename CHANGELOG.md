@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.7] - 2026-05-04
+
+### Bug Fixes
+
+- **ui:** rename icon to `homebridge.png` — the correct filename the Homebridge UI looks for
+
+---
+
 ## [1.1.6] - 2026-05-04
 
 ### Bug Fixes
