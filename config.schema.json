@@ -17,14 +17,12 @@
         "title": "Hubspace Username (email)",
         "type": "string",
         "format": "email",
-        "placeholder": "you@example.com",
-        "required": true
+        "placeholder": "you@example.com"
       },
       "password": {
         "title": "Hubspace Password",
         "type": "string",
-        "format": "password",
-        "required": true
+        "format": "password"
       },
       "pollingInterval": {
         "title": "Polling Interval (seconds)",

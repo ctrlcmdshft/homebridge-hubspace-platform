@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.11] - 2026-05-04
+
+### Bug Fixes
+
+- **schema:** remove invalid `"required": true` from individual config fields — JSON Schema requires `required` to be an array at the object level, not a boolean on each property; the object-level `"required": ["username", "password"]` already handles this correctly
+- **packaging:** remove `homebridge` from `devDependencies` — it is declared as a `peerDependency` which npm v7+ installs automatically, so listing it in `devDependencies` caused the Homebridge plugin verifier to flag it as an unnecessary installed dependency
+
+---
+
 ## [1.1.10] - 2026-05-04
 
 ### Bug Fixes
