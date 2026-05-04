@@ -61,7 +61,14 @@ function miredToKelvin(m: number): number {
 
 // ─── Fan-speed utilities ──────────────────────────────────────────────────────
 
-const NAMED_SPEED_TO_PERCENT: Record<string, number> = {
+/** Semantic fan-speed value names used by the Afero semantics2 API. */
+const SEMANTIC_SPEED_TO_PERCENT: Record<string, number> = {
+  'fan-speed-000': 0,
+  'fan-speed-025': 25,
+  'fan-speed-050': 50,
+  'fan-speed-075': 75,
+  'fan-speed-100': 100,
+  // Legacy named-speed fallbacks for older device profiles.
   'low': 25,
   'medium-low': 40,
   'medium': 55,
@@ -73,37 +80,36 @@ const NAMED_SPEED_TO_PERCENT: Record<string, number> = {
 /** Convert a Hubspace fan-speed value to a HomeKit rotation-speed percentage. */
 function hubspeedToPercent(value: string): number {
   const lower = value.toLowerCase();
-  if (NAMED_SPEED_TO_PERCENT[lower] !== undefined) {
-    return NAMED_SPEED_TO_PERCENT[lower];
+  if (SEMANTIC_SPEED_TO_PERCENT[lower] !== undefined) {
+    return SEMANTIC_SPEED_TO_PERCENT[lower];
   }
   const n = parseInt(value, 10);
-  if (!isNaN(n)) {
-    if (n >= 0 && n <= 100) return n;             // already a percentage
-    if (n >= 5 && n <= 6) return Math.round((n / 6) * 100);  // 6-speed
-    if (n >= 1 && n <= 4) return Math.round((n / 4) * 100);  // 4-speed
-  }
+  if (!isNaN(n) && n >= 0 && n <= 100) return n;
   return 50;
 }
 
-/**
- * Convert a HomeKit rotation-speed percentage back to the same format the
- * device originally reported (named strings or numeric).
- */
+/** Convert a HomeKit rotation-speed percentage to the Afero semantic value name. */
 function percentToHubspeed(percent: number, currentValue: string): string {
   const lower = currentValue.toLowerCase();
-  // If the device uses named speeds, quantize into named buckets.
-  if (NAMED_SPEED_TO_PERCENT[lower] !== undefined) {
+
+  // If device uses semantic speed names, map to the nearest named value.
+  if (lower.startsWith('fan-speed-')) {
+    if (percent <= 0)  return 'fan-speed-000';
+    if (percent <= 25) return 'fan-speed-025';
+    if (percent <= 50) return 'fan-speed-050';
+    if (percent <= 75) return 'fan-speed-075';
+    return 'fan-speed-100';
+  }
+
+  // Legacy named speeds.
+  if (SEMANTIC_SPEED_TO_PERCENT[lower] !== undefined) {
     if (percent <= 25) return 'low';
     if (percent <= 40) return 'medium-low';
     if (percent <= 55) return 'medium';
     if (percent <= 75) return 'medium-high';
     return 'high';
   }
-  const n = parseInt(currentValue, 10);
-  if (!isNaN(n)) {
-    if (n >= 5 && n <= 6) return Math.round((percent / 100) * 6).toString();  // 6-speed
-    if (n >= 1 && n <= 4) return Math.round((percent / 100) * 4).toString();  // 4-speed
-  }
+
   return Math.round(percent).toString();
 }
 
@@ -169,10 +175,12 @@ export abstract class BaseHubspaceAccessory {
   /** Called by the platform on each poll cycle with fresh state data. */
   updateState(values: DeviceStateValue[]): void {
     this.rebuildStateMap(values);
-    this.log.info(
-      `[Hubspace] State for "${this.device.friendlyName}": ` +
-      values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
-    );
+    if (this.platform.debug) {
+      this.log.info(
+        `[Hubspace] State for "${this.device.friendlyName}": ` +
+        values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
+      );
+    }
     this.pushCharacteristics();
   }
 
@@ -449,9 +457,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
     instance: string | undefined,
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
-    this.log.info(
-      `[Hubspace] SET fan power → ${on ? 'on' : 'off'} (instance: ${instance ?? 'none'})`,
-    );
     await this.setDeviceValues([
       this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
     ]);

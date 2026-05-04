@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.32] - 2026-05-04
+
+### Bug Fixes
+
+- **fan:** use Afero semantic speed value names (`fan-speed-025`, `fan-speed-050`, `fan-speed-075`, `fan-speed-100`) for both reading and writing fan speed — the API rejected raw numeric values with a 400 error
+
+---
+
 ## [1.0.31] - 2026-05-03
 
 ### Changes
