@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.28] - 2026-05-03
+
+### Bug Fixes
+
+- **fan:** poll all merged device IDs on each cycle — the ceiling-fan metadevice has power state while the fan metadevice has speed/direction; polling only the ceiling-fan ID caused speed to revert to 50% after every poll
+
+---
+
 ## [1.0.27] - 2026-05-03
 
 ### Bug Fixes

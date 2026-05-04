@@ -70,6 +70,8 @@ export interface HubspaceMetadeviceRaw {
 /** Normalised device used throughout the plugin. */
 export interface HubspaceDevice {
   id: string;
+  /** All device IDs that contribute state for this device (used when fan+ceiling-fan are merged). */
+  allIds: string[];
   typeId: string;
   friendlyName: string;
   deviceClass: string;

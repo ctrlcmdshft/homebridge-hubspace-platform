@@ -117,7 +117,7 @@ export abstract class BaseHubspaceAccessory {
   constructor(
     protected readonly platform: HubspacePlatform,
     protected readonly accessory: PlatformAccessory,
-    protected device: HubspaceDevice,
+    public device: HubspaceDevice,
   ) {
     this.log = platform.log;
     this.rebuildStateMap(device.values);

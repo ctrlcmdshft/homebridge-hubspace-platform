@@ -117,6 +117,7 @@ export class HubspaceClient {
 
       devices.push({
         id: raw.id,
+        allIds: [raw.id],
         typeId: raw.typeId,
         friendlyName: raw.friendlyName || raw.description?.device?.defaultName || raw.id,
         deviceClass,
@@ -136,14 +137,16 @@ export class HubspaceClient {
       if (!existing) {
         deduped.set(key, d);
       } else {
-        // Merge: prefer ceiling-fan deviceClass, combine all state values.
+        // Merge: prefer ceiling-fan deviceClass, combine all state values and IDs.
+        const primary = d.deviceClass.toLowerCase() === 'ceiling-fan' ? d : existing;
+        const secondary = d.deviceClass.toLowerCase() === 'ceiling-fan' ? existing : d;
         const merged: HubspaceDevice = {
-          ...( d.deviceClass.toLowerCase() === 'ceiling-fan' ? d : existing ),
+          ...primary,
+          allIds: [...new Set([...existing.allIds, ...d.allIds])],
           values: [
-            ...existing.values,
-            // Only add values not already present by functionClass+functionInstance.
-            ...d.values.filter(
-              (v) => !existing.values.some(
+            ...primary.values,
+            ...secondary.values.filter(
+              (v) => !primary.values.some(
                 (e) => e.functionClass === v.functionClass &&
                        e.functionInstance === v.functionInstance,
               ),
@@ -159,15 +162,28 @@ export class HubspaceClient {
     return result;
   }
 
-  /** Fetches the latest state for a single device. */
-  async getDeviceState(deviceId: string): Promise<DeviceStateValue[]> {
+  /** Fetches and merges state for one or more device IDs. */
+  async getDeviceState(deviceIds: string[]): Promise<DeviceStateValue[]> {
     const accountId = await this.resolveAccountId();
-    this.dbg('GET STATE', deviceId);
-    const res = await this.http.get<HubspaceMetadeviceRaw>(
-      `/accounts/${accountId}/metadevices/${deviceId}?expansions=state`,
-    );
-    this.log.info(`[Hubspace] STATE for ${deviceId}: ${JSON.stringify(res.data.state?.values).slice(0, 2000)}`);
-    return res.data.state?.values ?? [];
+    const merged: DeviceStateValue[] = [];
+
+    for (const deviceId of deviceIds) {
+      this.dbg('GET STATE', deviceId);
+      const res = await this.http.get<HubspaceMetadeviceRaw>(
+        `/accounts/${accountId}/metadevices/${deviceId}?expansions=state`,
+      );
+      const values = res.data.state?.values ?? [];
+      for (const v of values) {
+        if (!merged.some(
+          (e) => e.functionClass === v.functionClass &&
+                 e.functionInstance === v.functionInstance,
+        )) {
+          merged.push(v);
+        }
+      }
+    }
+
+    return merged;
   }
 
   async setDeviceState(

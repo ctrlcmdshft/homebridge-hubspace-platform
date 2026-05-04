@@ -176,6 +176,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
       const stub = {
         id: ctx.deviceId,
+        allIds: [ctx.deviceId],
         typeId: ctx.typeId,
         friendlyName: ctx.friendlyName,
         deviceClass: ctx.deviceClass,
@@ -215,7 +216,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     const entries = [...this.handlers.entries()];
     const results = await Promise.allSettled(
       entries.map(async ([deviceId, handler]) => {
-        const values = await this.client.getDeviceState(deviceId);
+        const allIds = handler.device.allIds ?? [deviceId];
+        const values = await this.client.getDeviceState(allIds);
         handler.updateState(values);
       }),
     );
