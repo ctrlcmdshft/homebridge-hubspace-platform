@@ -27,18 +27,20 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 ## Supported devices
 
-| Device | Features |
-| --- | --- |
-| Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · direction · light on/off · brightness |
-| Defiant Smart Plug | On/off |
-| Hubspace Smart Switch | On/off |
-| Hubspace Smart Light | On/off · brightness · color temperature · RGB color |
+| Device | Features | Status |
+| --- | --- | --- |
+| Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · direction · light on/off · brightness | Tested with hardware |
+| Defiant Smart Plug | On/off | Implemented, untested |
+| Hubspace Smart Switch | On/off | Implemented, untested |
+| Hubspace Smart Light | On/off · brightness · color temperature · RGB color | Implemented, untested |
+
+> **Note:** Only the Hampton Bay ceiling fan has been tested with real hardware. Other device types are implemented based on the Afero API but have not been verified. If you own one of these devices and can confirm it works (or find a bug), please open an issue.
 
 ---
 
 ## Requirements
 
-- **Node.js** ≥ 18.15
+- **Node.js** 20, 22, or 24
 - **Homebridge** ≥ 1.8.0 (v2.x supported)
 - A Hubspace / Home Depot account with at least one paired device
 

@@ -2,6 +2,7 @@
   "pluginAlias": "HubspacePlatform",
   "pluginType": "platform",
   "singular": true,
+  "strictValidation": true,
   "headerDisplay": "## Hubspace Platform\n\nSign in with your Hubspace (Home Depot) account. Tokens are cached locally — you will **not** be re-prompted on every restart.",
   "footerDisplay": "See the [README](https://github.com/ctrlcmdshft/homebridge-hubspace-platform#readme) for full documentation and troubleshooting tips.",
   "schema": {
@@ -45,7 +46,8 @@
         "description": "Log verbose state values on every poll cycle and API request/response details. Useful when troubleshooting device control issues."
       }
     },
-    "required": ["username", "password"]
+    "required": ["username", "password"],
+    "additionalProperties": false
   },
   "layout": [
     {
