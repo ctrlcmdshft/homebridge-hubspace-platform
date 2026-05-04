@@ -21,7 +21,7 @@
 
 Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, and switches directly from the Home app or with Siri.
 
-> **Disclaimer:** This project is not affiliated with or endorsed by Hubspace, Home Depot, or Afero. It is an independent community plugin built by reverse-engineering the Afero cloud API.
+> **Disclaimer:** This project is an independent, community-driven Homebridge plugin and is **not affiliated with, endorsed by, or supported by** Hubspace, The Home Depot, or Afero. It was built by reverse-engineering the public Afero cloud API and does not use any official SDKs or APIs provided by these companies. Use of this plugin is at your own risk.
 
 ---
 
@@ -174,6 +174,12 @@ Copy `.env.example` to `.env`, fill in your credentials, then run the discovery 
 ```bash
 USERNAME=you@example.com PASSWORD=yourpass node discover.mjs
 ```
+
+---
+
+## Disclaimer
+
+This project is an independent, community-driven Homebridge plugin. It is **not affiliated with, endorsed by, or supported by** Hubspace, The Home Depot, or Afero. All product names and trademarks are the property of their respective owners. Use of this plugin is at your own risk.
 
 ---
 
