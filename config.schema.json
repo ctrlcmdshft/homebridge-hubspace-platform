@@ -22,7 +22,8 @@
       "password": {
         "title": "Hubspace Password",
         "type": "string",
-        "format": "password"
+        "format": "password",
+        "placeholder": "Your Hubspace password"
       },
       "pollingInterval": {
         "title": "Polling Interval (seconds)",
