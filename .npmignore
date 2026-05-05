@@ -20,5 +20,8 @@ package-lock.json
 *.tsbuildinfo
 discover.mjs
 .gitignore
+.env
+.env.*
+api-dump.txt
 .env.example
 .story/
