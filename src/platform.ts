@@ -26,6 +26,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   private readonly configured: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private consecutiveFailCycles = 0;
   private readonly cfg: HubspaceConfig;
 
   constructor(
@@ -249,12 +250,24 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     results.forEach((r, i) => {
       if (r.status === 'rejected') {
         failCount++;
-        const [deviceId] = entries[i];
-        this.log.warn(`[Hubspace] Poll failed for ${deviceId}: ${r.reason}`);
+        if (this.consecutiveFailCycles < 3) {
+          const [deviceId] = entries[i];
+          this.log.warn(`[Hubspace] Poll failed for ${deviceId}: ${r.reason}`);
+        }
       }
     });
     if (failCount > 0) {
-      this.log.warn(`[Hubspace] ${failCount} device(s) failed to poll this cycle.`);
+      this.consecutiveFailCycles++;
+      if (this.consecutiveFailCycles === 3) {
+        this.log.warn(`[Hubspace] API appears unreachable — suppressing repeated poll errors. Will log again when recovered.`);
+      } else if (this.consecutiveFailCycles < 3) {
+        this.log.warn(`[Hubspace] ${failCount} device(s) failed to poll this cycle.`);
+      }
+    } else {
+      if (this.consecutiveFailCycles >= 3) {
+        this.log.info(`[Hubspace] API reachable again after ${this.consecutiveFailCycles} failed cycles.`);
+      }
+      this.consecutiveFailCycles = 0;
     }
   }
 

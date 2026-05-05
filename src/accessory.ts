@@ -4,6 +4,7 @@ import {
   CharacteristicValue,
   Logger,
 } from 'homebridge';
+import { isAxiosError } from 'axios';
 import type { HubspacePlatform } from './platform';
 import { HubspaceDevice, DeviceStateValue, FC, HubspaceAccessoryContext } from './types';
 import {
@@ -105,9 +106,11 @@ export abstract class BaseHubspaceAccessory {
       await this.platform.client.setDeviceState(this.device.id, values);
       this.platform.scheduleQuickPoll(this.device.id, 3000);
     } catch (err) {
-      this.log.error(
-        `[Hubspace] Failed to set state for "${this.device.friendlyName}":`, err,
-      );
+      const detail = isAxiosError(err)
+        ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? err.message}` +
+          (err.response?.data?.requestId ? ` (requestId: ${err.response.data.requestId})` : '')
+        : String(err);
+      this.log.error(`[Hubspace] Failed to set state for "${this.device.friendlyName}": ${detail}`);
       // Revert optimistic state immediately on failure.
       this.platform.scheduleQuickPoll(this.device.id, 0);
     }

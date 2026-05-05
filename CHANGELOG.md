@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.18] - 2026-05-05
+
+### Improvements
+
+- **logging:** set-state errors now log a single concise line (HTTP status, error message, requestId) instead of dumping the full Axios error object — prevents JWT tokens from appearing in Homebridge logs
+- **logging:** sustained API outages no longer spam the log — after 3 consecutive failed poll cycles the plugin emits one "API appears unreachable" warning and stays quiet until the API recovers, at which point it logs how many cycles were missed
+
+---
+
 ## [1.1.17] - 2026-05-04
 
 ### Bug Fixes
