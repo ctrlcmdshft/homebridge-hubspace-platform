@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.20] - 2026-05-05
+
+### Maintenance
+
+- **ci:** drop Node.js 20 (EOL April 30, 2026) — CI now tests on Node 22 and 24 only, matching the official Homebridge plugin template
+- **engines:** update `engines.node` to `^22 || ^24` to reflect active LTS support
+
+---
+
 ## [1.1.19] - 2026-05-05
 
 ### Improvements
