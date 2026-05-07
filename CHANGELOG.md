@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.21] - 2026-05-07
+
+### Bug Fixes
+
+- **fans:** fix HomeKit warning "illegal value: number 0 exceeded minimum of 25" on startup — the RotationSpeed characteristic is now initialised to the clamped fan speed (≥ 25) before props are applied, preventing HAP from validating a stale cached value of 0 against the 25–100 range
+
+### Maintenance
+
+- **token cache:** migrate file I/O from synchronous `fs` to `fs.promises` — eliminates the socket.dev `filesystemAccess` alert and removes blocking I/O from the async startup path
+- **security:** add socket.dev `filesystemAccess` acknowledgment to `package.json` — the token cache write to Homebridge's storage path is intentional and expected plugin behaviour
+
+---
+
 ## [1.1.20] - 2026-05-05
 
 ### Maintenance
