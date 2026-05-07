@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Logger } from 'homebridge';
 import {
@@ -82,7 +82,7 @@ export class HubspaceClient {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   async initialize(): Promise<void> {
-    this.loadCachedTokens();
+    await this.loadCachedTokens();
 
     if (this.tokens && this.isRefreshTokenValid()) {
       this.log.info('[Hubspace] Loaded cached tokens — skipping login.');
@@ -285,7 +285,7 @@ export class HubspaceClient {
     }
 
     this.storeTokens(data);
-    this.saveCachedTokens();
+    await this.saveCachedTokens();
     this.log.info(
       `[Hubspace] Authentication successful — access token expires in ${data.expires_in}s, ` +
       `refresh token expires in ${Math.round(data.refresh_expires_in / 60)}m.`,
@@ -313,7 +313,7 @@ export class HubspaceClient {
           },
         );
         this.storeTokens(res.data);
-        this.saveCachedTokens();
+        await this.saveCachedTokens();
         this.log.debug('[Hubspace] Token refresh successful.');
       } catch (err) {
         this.log.warn(
@@ -366,31 +366,32 @@ export class HubspaceClient {
     };
   }
 
-  private loadCachedTokens(): void {
+  private async loadCachedTokens(): Promise<void> {
     try {
-      if (!fs.existsSync(this.tokenCachePath)) return;
-      const raw = fs.readFileSync(this.tokenCachePath, 'utf-8');
+      const raw = await fs.readFile(this.tokenCachePath, 'utf-8');
       const cached = JSON.parse(raw) as AuthTokens;
       if (cached.username && cached.username !== this.username) {
         this.log.info('[Hubspace] Cached tokens belong to a different account — discarding.');
-        fs.unlinkSync(this.tokenCachePath);
+        await fs.unlink(this.tokenCachePath);
         return;
       }
       this.tokens = cached;
       this.log.debug('[Hubspace] Loaded token cache from disk.');
-    } catch {
-      this.log.debug('[Hubspace] Could not read token cache — ignoring.');
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.log.debug('[Hubspace] Could not read token cache — ignoring.');
+      }
       this.tokens = null;
     }
   }
 
-  private saveCachedTokens(): void {
+  private async saveCachedTokens(): Promise<void> {
     try {
       const dir = path.dirname(this.tokenCachePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      await fs.mkdir(dir, { recursive: true });
       const tmp = this.tokenCachePath + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(this.tokens, null, 2), 'utf-8');
-      fs.renameSync(tmp, this.tokenCachePath);
+      await fs.writeFile(tmp, JSON.stringify(this.tokens, null, 2), 'utf-8');
+      await fs.rename(tmp, this.tokenCachePath);
     } catch (err) {
       this.log.warn(`[Hubspace] Could not save token cache: ${err}`);
     }

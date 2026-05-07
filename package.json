@@ -57,6 +57,16 @@
     "ts-jest": "^29.4.9",
     "typescript": "^5.5.2"
   },
+  "socket": {
+    "ignore": {
+      "filesystemAccess": [
+        {
+          "package": "homebridge-hubspace-platform",
+          "reason": "Token cache (hubspace-tokens.json) written to Homebridge storage path — expected plugin behavior"
+        }
+      ]
+    }
+  },
   "homebridge": {
     "name": "Hubspace Platform",
     "alias": "HubspacePlatform",
