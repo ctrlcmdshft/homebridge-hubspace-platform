@@ -60,9 +60,16 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 **Manual**
 
-```bash
-npm install -g homebridge-hubspace-platform
-```
+The correct manual install method depends on your setup:
+
+| Setup | Command |
+|---|---|
+| Homebridge UI (any) | Plugins tab → search → Install |
+| `hb-service` (Linux/Raspberry Pi) | `hb-service add homebridge-hubspace-platform` |
+| Docker | Use the Homebridge UI inside the container, or add to your startup config |
+| Manual Node install | `npm install -g homebridge-hubspace-platform` (only if Homebridge itself was installed globally with npm) |
+
+> **Note:** `npm install -g` installs into the system Node prefix, not the Homebridge plugin directory. On most setups (Docker, hb-service, HOOBS) this means Homebridge won't find the plugin. Always prefer the Homebridge UI or `hb-service add`.
 
 ---
 

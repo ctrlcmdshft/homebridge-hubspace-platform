@@ -89,6 +89,16 @@ export abstract class BaseHubspaceAccessory {
     this.pushCharacteristics();
   }
 
+  // ── Fault status ──────────────────────────────────────────────────────────────
+
+  protected getStatusFault(): CharacteristicValue {
+    const v = this.findValue(FC.AVAILABLE);
+    if (v === undefined) return this.platform.Characteristic.StatusFault.NO_FAULT;
+    return (v.value === true || v.value === 'true' || v.value === 1)
+      ? this.platform.Characteristic.StatusFault.NO_FAULT
+      : this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+  }
+
   // ── Abstract interface ────────────────────────────────────────────────────────
 
   protected abstract setupServices(): void;
@@ -316,9 +326,11 @@ export class LightAccessory extends BaseHubspaceAccessory {
 export class FanAccessory extends BaseHubspaceAccessory {
   declare private fanSvc: Service;
   declare private lightSvc: Service | null;
+  declare private comfortBreezeSvc: Service | null;
 
   protected setupServices(): void {
     this.lightSvc = null;
+    this.comfortBreezeSvc = null;
 
     // ── Fan service ───────────────────────────────────────────────────────────
     this.fanSvc =
@@ -330,6 +342,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     this.fanSvc.getCharacteristic(this.platform.Characteristic.Active)
       .onGet(() => this.getFanActive())
       .onSet(async (v) => this.setFanActive(v as number, fanPower?.functionInstance));
+
 
     // Rotation speed — 4 discrete steps (25/50/75/100); on/off via Active toggle.
     if (this.findValue(FC.FAN_SPEED)) {
@@ -361,6 +374,21 @@ export class FanAccessory extends BaseHubspaceAccessory {
           .onGet(() => this.getLightBrightness())
           .onSet(async (v) => this.setLightBrightness(v as number));
       }
+    }
+
+    // ── Comfort Breeze switch ─────────────────────────────────────────────────
+    if (this.findValue(FC.TOGGLE, 'comfort-breeze')) {
+      this.comfortBreezeSvc =
+        this.accessory.getService('Comfort Breeze') ??
+        this.accessory.addService(
+          this.platform.Service.Switch,
+          'Comfort Breeze',
+          'comfort-breeze',
+        );
+
+      this.comfortBreezeSvc.getCharacteristic(this.platform.Characteristic.On)
+        .onGet(() => this.getComfortBreeze())
+        .onSet(async (v) => this.setComfortBreeze(v as boolean));
     }
   }
 
@@ -402,6 +430,19 @@ export class FanAccessory extends BaseHubspaceAccessory {
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  // ── Comfort Breeze getters / setters ─────────────────────────────────────────
+
+  private getComfortBreeze(): CharacteristicValue {
+    const v = this.findValue(FC.TOGGLE, 'comfort-breeze');
+    return v?.value === 'enabled' || v?.value === true || v?.value === 1;
+  }
+
+  private async setComfortBreeze(on: boolean): Promise<void> {
+    await this.setDeviceValues([
+      this.buildPatch(FC.TOGGLE, on ? 'enabled' : 'disabled', 'comfort-breeze'),
+    ]);
   }
 
   // ── Light-kit getters / setters ───────────────────────────────────────────────
@@ -458,6 +499,11 @@ export class FanAccessory extends BaseHubspaceAccessory {
           this.platform.Characteristic.Brightness, this.getLightBrightness());
       }
     }
+
+    if (this.comfortBreezeSvc) {
+      this.comfortBreezeSvc.updateCharacteristic(
+        this.platform.Characteristic.On, this.getComfortBreeze());
+    }
   }
 }
 
@@ -483,10 +529,12 @@ export class OutletAccessory extends BaseHubspaceAccessory {
       .onGet(() => this.getPower())
       .onSet(async (v) => this.setPower(v as boolean));
 
-    // OutletInUse is required for the Outlet service (true whenever powered on).
+    // OutletInUse and StatusFault are optional on the Outlet service (not Switch).
     if (useOutletService) {
       this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
         .onGet(() => this.getPower());
+      this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
     }
   }
 
@@ -505,6 +553,8 @@ export class OutletAccessory extends BaseHubspaceAccessory {
     if (this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)) {
       this.svc.updateCharacteristic(
         this.platform.Characteristic.OutletInUse, this.getPower());
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
     }
   }
 }

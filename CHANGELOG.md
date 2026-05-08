@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.22] - 2026-05-07
+
+### Features
+
+- **fans:** add Comfort Breeze switch — exposes the `toggle[comfort-breeze]` capability as a HomeKit Switch service on ceiling fans that support it; only appears if the device reports the capability
+- **outlets:** offline detection via `available` field — when the Hubspace cloud reports an outlet as unavailable, HomeKit now shows a `StatusFault` indicator; clears automatically when the device comes back online (`StatusFault` is only valid on the Outlet service per the HAP spec)
+
 ## [1.1.21] - 2026-05-07
 
 ### Bug Fixes

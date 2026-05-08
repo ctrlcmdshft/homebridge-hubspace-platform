@@ -23,6 +23,14 @@ hubspace-tokens.json
 *.swp
 *.swo
 
+# Test coverage
+coverage/
+
+# Local dev scripts and dumps
+api-dump.txt
+discover.mjs
+.story/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

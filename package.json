@@ -1,7 +1,7 @@
 {
   "name": "homebridge-hubspace-platform",
   "displayName": "Hubspace Platform",
-  "version": "1.1.21",
+  "version": "1.1.22-test.4",
   "description": "Modern, production-ready Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, and switches.",
   "license": "MIT",
   "author": "ctrlcmdshft",
@@ -63,6 +63,12 @@
         {
           "package": "homebridge-hubspace-platform",
           "reason": "Token cache (hubspace-tokens.json) written to Homebridge storage path — expected plugin behavior"
+        }
+      ],
+      "urlStrings": [
+        {
+          "package": "homebridge-hubspace-platform",
+          "reason": "Required Hubspace/Afero cloud API endpoints (accounts.hubspaceconnect.com, api2.afero.net, semantics2.afero.net) — these are the only URLs the plugin connects to and are fully documented in the README"
         }
       ]
     }

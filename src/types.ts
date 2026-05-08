@@ -112,6 +112,7 @@ export const FC = {
   COLOR_RGB: 'color-rgb',
   COLOR_MODE: 'color-mode',
   FAN_SPEED: 'fan-speed',
+  AVAILABLE: 'available',
 } as const;
 
 export type FunctionClass = (typeof FC)[keyof typeof FC];
