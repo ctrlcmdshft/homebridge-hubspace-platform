@@ -151,7 +151,7 @@ describe('FanAccessory', () => {
     ])('%s → %i%%', (raw, expected) => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
-      const device = makeFanDevice([sv(FC.FAN_SPEED, raw, 'fan-speed')]);
+      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power'), sv(FC.FAN_SPEED, raw, 'fan-speed')]);
       const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
 
       fanAcc.updateState(device.values);
@@ -159,24 +159,24 @@ describe('FanAccessory', () => {
       expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', expected);
     });
 
-    it('clamps fan-speed-000 to minimum 25', () => {
+    it('returns 0 when fan is inactive', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
-      const device = makeFanDevice([sv(FC.FAN_SPEED, 'fan-speed-000', 'fan-speed')]);
+      const device = makeFanDevice([sv(FC.POWER, 'off', 'fan-power'), sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed')]);
       const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
 
       fanAcc.updateState(device.values);
 
-      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 25);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 0);
     });
 
     it('updates correctly when state changes', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
-      const device = makeFanDevice([sv(FC.FAN_SPEED, 'fan-speed-025', 'fan-speed')]);
+      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power'), sv(FC.FAN_SPEED, 'fan-speed-025', 'fan-speed')]);
       const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
 
-      fanAcc.updateState([sv(FC.FAN_SPEED, 'fan-speed-100', 'fan-speed')]);
+      fanAcc.updateState([sv(FC.POWER, 'on', 'fan-power'), sv(FC.FAN_SPEED, 'fan-speed-100', 'fan-speed')]);
 
       expect(platform._svc.updateCharacteristic).toHaveBeenLastCalledWith('RotationSpeed', 100);
     });
