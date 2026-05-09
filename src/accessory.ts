@@ -326,17 +326,14 @@ export class LightAccessory extends BaseHubspaceAccessory {
 export class FanAccessory extends BaseHubspaceAccessory {
   declare private fanSvc: Service;
   declare private lightSvc: Service | null;
-  declare private comfortBreezeSvc: Service | null;
 
   protected setupServices(): void {
     this.lightSvc = null;
-    this.comfortBreezeSvc = null;
 
     // ── Fan service ───────────────────────────────────────────────────────────
     this.fanSvc =
       this.accessory.getService(this.platform.Service.Fanv2) ??
       this.accessory.addService(this.platform.Service.Fanv2, this.device.friendlyName);
-    this.fanSvc.setPrimaryService(true);
 
     // Active (fan power — use functionInstance that is NOT "light-power").
     const fanPower = this.findFanPowerValue();
@@ -377,19 +374,15 @@ export class FanAccessory extends BaseHubspaceAccessory {
       }
     }
 
-    // ── Comfort Breeze switch ─────────────────────────────────────────────────
+    // ── Comfort Breeze — SwingMode on the Fanv2 service (avoids extra Switch
+    //    service which breaks iOS tile tap-to-toggle behaviour).
     if (this.findValue(FC.TOGGLE, 'comfort-breeze')) {
-      this.comfortBreezeSvc =
-        this.accessory.getService('Comfort Breeze') ??
-        this.accessory.addService(
-          this.platform.Service.Switch,
-          'Comfort Breeze',
-          'comfort-breeze',
-        );
-
-      this.comfortBreezeSvc.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(() => this.getComfortBreeze())
-        .onSet(async (v) => this.setComfortBreeze(v as boolean));
+      this.fanSvc.getCharacteristic(this.platform.Characteristic.SwingMode)
+        .onGet(() => this.getComfortBreeze()
+          ? this.platform.Characteristic.SwingMode.SWING_ENABLED
+          : this.platform.Characteristic.SwingMode.SWING_DISABLED)
+        .onSet(async (v) => this.setComfortBreeze(
+          v === this.platform.Characteristic.SwingMode.SWING_ENABLED));
     }
   }
 
@@ -501,9 +494,12 @@ export class FanAccessory extends BaseHubspaceAccessory {
       }
     }
 
-    if (this.comfortBreezeSvc) {
-      this.comfortBreezeSvc.updateCharacteristic(
-        this.platform.Characteristic.On, this.getComfortBreeze());
+    if (this.findValue(FC.TOGGLE, 'comfort-breeze')) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.SwingMode,
+        this.getComfortBreeze()
+          ? this.platform.Characteristic.SwingMode.SWING_ENABLED
+          : this.platform.Characteristic.SwingMode.SWING_DISABLED);
     }
   }
 }

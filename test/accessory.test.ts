@@ -25,6 +25,7 @@ function makeSvcMock() {
 // use them in assertions so they match what the code passes to updateCharacteristic.
 const Active = { ACTIVE: 1, INACTIVE: 0 };
 const StatusFault = { NO_FAULT: 0, GENERAL_FAULT: 1 };
+const SwingMode = { SWING_ENABLED: 1, SWING_DISABLED: 0 };
 
 function makePlatform() {
   const svc = makeSvcMock();
@@ -42,6 +43,7 @@ function makePlatform() {
     },
     Characteristic: {
       Active,
+      SwingMode,
       On: 'On',
       RotationSpeed: 'RotationSpeed',
       Brightness: 'Brightness',
@@ -181,7 +183,7 @@ describe('FanAccessory', () => {
   });
 
   describe('comfort breeze', () => {
-    it('pushes true when enabled', () => {
+    it('pushes SWING_ENABLED when enabled', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
       const device = makeFanDevice([sv(FC.TOGGLE, 'enabled', 'comfort-breeze')]);
@@ -189,10 +191,10 @@ describe('FanAccessory', () => {
 
       fanAcc.updateState(device.values);
 
-      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('On', true);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(SwingMode, SwingMode.SWING_ENABLED);
     });
 
-    it('pushes false when disabled', () => {
+    it('pushes SWING_DISABLED when disabled', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
       const device = makeFanDevice([sv(FC.TOGGLE, 'disabled', 'comfort-breeze')]);
@@ -200,7 +202,7 @@ describe('FanAccessory', () => {
 
       fanAcc.updateState(device.values);
 
-      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('On', false);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(SwingMode, SwingMode.SWING_DISABLED);
     });
 
     it('does not add comfort breeze service when capability absent', () => {
