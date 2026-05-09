@@ -336,6 +336,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     this.fanSvc =
       this.accessory.getService(this.platform.Service.Fanv2) ??
       this.accessory.addService(this.platform.Service.Fanv2, this.device.friendlyName);
+    this.fanSvc.setPrimaryService(true);
 
     // Active (fan power — use functionInstance that is NOT "light-power").
     const fanPower = this.findFanPowerValue();
