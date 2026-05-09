@@ -71,10 +71,15 @@
     },
     {
       "type": "fieldset",
+      "title": "Device Options",
+      "items": ["exposeComfortBreeze"]
+    },
+    {
+      "type": "fieldset",
       "title": "Advanced",
       "expandable": true,
       "expanded": false,
-      "items": ["pollingInterval", "exposeComfortBreeze", "debug", "name", "tokenCachePath"]
+      "items": ["pollingInterval", "debug", "name", "tokenCachePath"]
     }
   ]
 }
