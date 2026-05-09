@@ -9,7 +9,7 @@ import {
 } from 'homebridge';
 import { PLUGIN_NAME, PLATFORM_NAME, HubspaceConfig, SUPPORTED_DEVICE_CLASSES } from './types';
 import { HubspaceClient } from './hubspace-client';
-import { BaseHubspaceAccessory, createAccessory } from './accessory';
+import { BaseHubspaceAccessory, FanAccessory, createAccessory } from './accessory';
 import type { HubspaceAccessoryContext } from './accessory';
 
 export class HubspacePlatform implements DynamicPlatformPlugin {
@@ -147,6 +147,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         if (handler) {
           this.handlers.set(device.id, handler);
           this.log.info(`[Hubspace] Restored: "${device.friendlyName}" (${device.deviceClass})`);
+          this.setupComfortBreezeCompanion(handler, device.id, seenUUIDs);
         }
       } else {
         // Register a brand-new accessory.
@@ -161,6 +162,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
           this.handlers.set(device.id, handler);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [pAccessory]);
           this.log.info(`[Hubspace] Registered: "${device.friendlyName}" (${device.deviceClass})`);
+          this.setupComfortBreezeCompanion(handler, device.id, seenUUIDs);
         }
       }
     }
@@ -186,6 +188,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     for (const [, pAccessory] of this.cachedAccessories) {
       const ctx = pAccessory.context as HubspaceAccessoryContext;
       if (!ctx?.deviceId || this.handlers.has(ctx.deviceId)) continue;
+      if (ctx.companionFor) continue; // companion accessories have no standalone handler
 
       const stub = {
         id: ctx.deviceId,
@@ -272,6 +275,30 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+  private setupComfortBreezeCompanion(
+    handler: BaseHubspaceAccessory,
+    deviceId: string,
+    seenUUIDs: Set<string>,
+  ): void {
+    if (!this.cfg.exposeComfortBreeze) return;
+    if (!(handler instanceof FanAccessory) || !handler.hasComfortBreeze()) return;
+
+    const cbUUID = this.api.hap.uuid.generate(deviceId + '-cb');
+    seenUUIDs.add(cbUUID);
+
+    const existing = this.cachedAccessories.get(cbUUID);
+    if (existing) {
+      handler.setupComfortBreezeCompanion(existing);
+      this.log.info(`[Hubspace] Restored Comfort Breeze companion for "${handler.device.friendlyName}"`);
+    } else {
+      const cbAcc = new this.api.platformAccessory('Comfort Breeze', cbUUID);
+      cbAcc.context = { deviceId, deviceClass: 'comfort-breeze', typeId: '', friendlyName: 'Comfort Breeze', companionFor: deviceId };
+      handler.setupComfortBreezeCompanion(cbAcc);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [cbAcc]);
+      this.log.info(`[Hubspace] Registered Comfort Breeze companion for "${handler.device.friendlyName}"`);
+    }
+  }
 
   private buildContext(device: {
     id: string;

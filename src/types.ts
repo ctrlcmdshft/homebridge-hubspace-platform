@@ -13,6 +13,8 @@ export interface HubspaceConfig {
   /** Override path for the token cache JSON file. */
   tokenCachePath?: string;
   debug?: boolean;
+  /** Expose Comfort Breeze as a separate HomeKit switch tile (default false). */
+  exposeComfortBreeze?: boolean;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -91,6 +93,8 @@ export interface HubspaceAccessoryContext {
   friendlyName: string;
   manufacturerName?: string;
   model?: string;
+  /** Set on companion accessories (e.g. Comfort Breeze) — skip in handler restore. */
+  companionFor?: string;
 }
 
 // ─── Supported device classes ─────────────────────────────────────────────────

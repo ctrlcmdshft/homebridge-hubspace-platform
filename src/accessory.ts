@@ -326,11 +326,10 @@ export class LightAccessory extends BaseHubspaceAccessory {
 export class FanAccessory extends BaseHubspaceAccessory {
   declare private fanSvc: Service;
   declare private lightSvc: Service | null;
-  declare private comfortBreezeSvc: Service | null;
+  private cbAcc: PlatformAccessory | null = null;
 
   protected setupServices(): void {
     this.lightSvc = null;
-    this.comfortBreezeSvc = null;
 
     // ── Fan service ───────────────────────────────────────────────────────────
     this.fanSvc =
@@ -376,19 +375,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
       }
     }
 
-    // ── Comfort Breeze switch ─────────────────────────────────────────────────
-    if (this.findValue(FC.TOGGLE, 'comfort-breeze')) {
-      this.comfortBreezeSvc =
-        this.accessory.getService('Comfort Breeze') ??
-        this.accessory.addService(
-          this.platform.Service.Switch,
-          'Comfort Breeze',
-          'comfort-breeze',
-        );
-      this.comfortBreezeSvc.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(() => this.getComfortBreeze())
-        .onSet(async (v) => this.setComfortBreeze(v as boolean));
-    }
   }
 
   // ── Fan getters / setters ─────────────────────────────────────────────────────
@@ -435,6 +421,22 @@ export class FanAccessory extends BaseHubspaceAccessory {
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  // ── Comfort Breeze companion accessory ───────────────────────────────────────
+
+  public hasComfortBreeze(): boolean {
+    return this.findValue(FC.TOGGLE, 'comfort-breeze') !== undefined;
+  }
+
+  public setupComfortBreezeCompanion(pAcc: PlatformAccessory): void {
+    this.cbAcc = pAcc;
+    const svc =
+      pAcc.getService(this.platform.Service.Switch) ??
+      pAcc.addService(this.platform.Service.Switch, 'Comfort Breeze');
+    svc.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => this.getComfortBreeze())
+      .onSet(async (v) => this.setComfortBreeze(v as boolean));
   }
 
   // ── Comfort Breeze getters / setters ─────────────────────────────────────────
@@ -505,9 +507,9 @@ export class FanAccessory extends BaseHubspaceAccessory {
       }
     }
 
-    if (this.comfortBreezeSvc) {
-      this.comfortBreezeSvc.updateCharacteristic(
-        this.platform.Characteristic.On, this.getComfortBreeze());
+    if (this.cbAcc) {
+      this.cbAcc.getService(this.platform.Service.Switch)
+        ?.updateCharacteristic(this.platform.Characteristic.On, this.getComfortBreeze());
     }
   }
 }

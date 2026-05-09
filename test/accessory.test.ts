@@ -181,36 +181,65 @@ describe('FanAccessory', () => {
   });
 
   describe('comfort breeze', () => {
-    it('pushes true when enabled', () => {
+    function makeCompanionMock(platform: ReturnType<typeof makePlatform>) {
+      const svc = makeSvcMock();
+      return {
+        getService: jest.fn(() => svc),
+        addService: jest.fn(() => svc),
+        _svc: svc,
+      };
+    }
+
+    it('pushes true to companion when enabled', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const cbAcc = makeCompanionMock(platform);
+      const device = makeFanDevice([sv(FC.TOGGLE, 'enabled', 'comfort-breeze')]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+      fanAcc.setupComfortBreezeCompanion(cbAcc as any);
+
+      fanAcc.updateState(device.values);
+
+      expect(cbAcc._svc.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    });
+
+    it('pushes false to companion when disabled', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const cbAcc = makeCompanionMock(platform);
+      const device = makeFanDevice([sv(FC.TOGGLE, 'disabled', 'comfort-breeze')]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+      fanAcc.setupComfortBreezeCompanion(cbAcc as any);
+
+      fanAcc.updateState(device.values);
+
+      expect(cbAcc._svc.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    });
+
+    it('does not add comfort breeze service to main accessory', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
       const device = makeFanDevice([sv(FC.TOGGLE, 'enabled', 'comfort-breeze')]);
-      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
-
-      fanAcc.updateState(device.values);
-
-      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('On', true);
-    });
-
-    it('pushes false when disabled', () => {
-      const platform = makePlatform();
-      const acc = makeAccessoryMock(platform);
-      const device = makeFanDevice([sv(FC.TOGGLE, 'disabled', 'comfort-breeze')]);
-      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
-
-      fanAcc.updateState(device.values);
-
-      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('On', false);
-    });
-
-    it('does not add comfort breeze service when capability absent', () => {
-      const platform = makePlatform();
-      const acc = makeAccessoryMock(platform);
-      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power')]);
       new FanAccessory(platform as any, acc as any, device as any);
 
       const addedServiceNames = (acc.addService.mock.calls as any[]).map((c) => c[1]);
       expect(addedServiceNames).not.toContain('Comfort Breeze');
+    });
+
+    it('hasComfortBreeze returns true when capability present', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([sv(FC.TOGGLE, 'enabled', 'comfort-breeze')]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+      expect(fanAcc.hasComfortBreeze()).toBe(true);
+    });
+
+    it('hasComfortBreeze returns false when capability absent', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power')]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+      expect(fanAcc.hasComfortBreeze()).toBe(false);
     });
   });
 });

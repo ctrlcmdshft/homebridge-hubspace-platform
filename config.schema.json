@@ -43,6 +43,12 @@
         "type": "boolean",
         "default": false,
         "description": "Log verbose state values on every poll cycle and API request/response details. Useful when troubleshooting device control issues."
+      },
+      "exposeComfortBreeze": {
+        "title": "Expose Comfort Breeze Switch",
+        "type": "boolean",
+        "default": false,
+        "description": "Show Comfort Breeze as a separate HomeKit switch tile for supported fans. When disabled (default), Comfort Breeze is hidden and the fan tile tap toggles power directly."
       }
     },
     "required": ["username", "password"],
@@ -68,7 +74,7 @@
       "title": "Advanced",
       "expandable": true,
       "expanded": false,
-      "items": ["pollingInterval", "debug", "name", "tokenCachePath"]
+      "items": ["pollingInterval", "exposeComfortBreeze", "debug", "name", "tokenCachePath"]
     }
   ]
 }
