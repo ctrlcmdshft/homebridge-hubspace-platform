@@ -520,6 +520,7 @@ class ConclaveClient extends EventEmitter {
   private socket: tls.TLSSocket | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   private backoffMs = 1_000;
   private destroyed = false;
   private lineBuffer = '';
@@ -539,14 +540,25 @@ class ConclaveClient extends EventEmitter {
     if (this.destroyed) return;
     this.dbg('Connecting to Conclave…');
     this.fetchConclaveToken()
-      .then(({ token }) => this.openSocket(token))
+      .then(({ token, expiresIn }) => {
+        this.dbg(`Conclave token acquired — expires in ${expiresIn}s.`);
+        this.openSocket(token, expiresIn);
+      })
       .catch((err) => {
         this.log.warn(`[Conclave] Token fetch failed: ${err} — will retry.`);
         this.scheduleReconnect();
       });
   }
 
-  private openSocket(conclaveToken: string): void {
+  private openSocket(conclaveToken: string, expiresIn: number): void {
+    // Proactively reconnect at 80% of token lifetime so we never hit server expiry.
+    const refreshMs = Math.floor(expiresIn * 0.8) * 1000;
+    this.tokenRefreshTimer = setTimeout(() => {
+      this.tokenRefreshTimer = null;
+      this.dbg('Token expiry approaching — reconnecting proactively.');
+      this.teardown();
+      this.connect();
+    }, refreshMs);
     if (this.destroyed) return;
 
     const socket = tls.connect({
@@ -664,6 +676,10 @@ class ConclaveClient extends EventEmitter {
 
   private teardown(): void {
     this.stopHeartbeat();
+    if (this.tokenRefreshTimer) {
+      clearTimeout(this.tokenRefreshTimer);
+      this.tokenRefreshTimer = null;
+    }
     try { this.socket?.destroy(); } catch { /* ignore */ }
     this.socket = null;
     this.lineBuffer = '';
