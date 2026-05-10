@@ -600,7 +600,8 @@ class ConclaveClient extends EventEmitter {
     if (isHello(envelope)) {
       const heartbeatSecs = envelope.hello.heartbeat ?? 270;
       this.dbg(`Received hello — heartbeat every ${heartbeatSecs}s.`);
-      this.startHeartbeat(heartbeatSecs * 1000);
+      // Send at 80% of the server interval so the keepalive arrives well before the deadline.
+      this.startHeartbeat(Math.floor(heartbeatSecs * 0.8) * 1000);
       this.sendLogin(conclaveToken);
       return;
     }
