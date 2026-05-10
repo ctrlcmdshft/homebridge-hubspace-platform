@@ -16,6 +16,7 @@ function makeSvcMock() {
   const char = makeCharMock();
   return {
     getCharacteristic: jest.fn(() => char),
+    addOptionalCharacteristic: jest.fn(),
     setCharacteristic: jest.fn().mockReturnThis(),
     updateCharacteristic: jest.fn(),
   };

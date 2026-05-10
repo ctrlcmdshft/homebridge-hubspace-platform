@@ -202,6 +202,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
     // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
     if (this.platform.exposeStatusFault) {
+      this.svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
       this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
         .onGet(() => this.getStatusFault());
     }
@@ -366,6 +367,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
     // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
     if (this.platform.exposeStatusFault) {
+      this.fanSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
       this.fanSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
         .onGet(() => this.getStatusFault());
     }

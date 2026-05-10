@@ -1,7 +1,7 @@
 {
   "name": "homebridge-hubspace-platform",
   "displayName": "Hubspace Platform",
-  "version": "1.1.22-test.13",
+  "version": "1.1.22-test.14",
   "description": "Modern, production-ready Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, and switches.",
   "license": "MIT",
   "author": "ctrlcmdshft",
