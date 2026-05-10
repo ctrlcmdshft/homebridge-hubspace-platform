@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as tls from 'tls';
+import * as zlib from 'zlib';
 import * as crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { Logger } from 'homebridge';
@@ -112,10 +113,10 @@ export class HubspaceClient {
     client.connect();
   }
 
-  async fetchConclaveToken(): Promise<{ token: string; expiresIn: number }> {
+  async fetchConclaveToken(): Promise<{ token: string; expiresIn: number; host: string; compression: boolean }> {
     const accountId = await this.resolveAccountId();
     const accessToken = await this.getValidAccessToken();
-    const res = await axios.post<{ token: string; expiresIn?: number; expires_in?: number }>(
+    const res = await axios.post<Record<string, unknown>>(
       `https://api2.afero.net/v1/accounts/${accountId}/conclaveAccess`,
       {},
       {
@@ -129,19 +130,32 @@ export class HubspaceClient {
         timeout: 15_000,
       },
     );
-    const raw = res.data as Record<string, unknown>;
-    if (this.debug) {
-      const fields = Object.entries(raw)
-        .filter(([k]) => k !== 'token')
-        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-        .join(', ');
-      this.log.info(`[Conclave] Token response fields: ${fields}`);
+    const raw = res.data;
+
+    // Response shape: { tokens: [{token, expiresTimestamp, createdTimestamp, ...}], conclave: {host, port, ssl, compression}, ... }
+    type TokenEntry = { token: string; expiresTimestamp?: number };
+    const tokensArr = raw['tokens'] as TokenEntry[] | undefined;
+    const tokenEntry = tokensArr?.[0];
+    const token = tokenEntry?.token ?? (raw['token'] as string | undefined);
+    if (!token) throw new Error('No token in Conclave access response');
+
+    // Expiry from timestamp (ms epoch) or fall back to scalar fields
+    let expiresIn = 90;
+    if (tokenEntry?.expiresTimestamp) {
+      expiresIn = Math.max(60, Math.floor((tokenEntry.expiresTimestamp - Date.now()) / 1000));
     }
-    const parsed = (raw['expiresIn'] ?? raw['expires_in'] ?? raw['ttl'] ??
-      raw['tokenExpiry'] ?? raw['validFor'] ?? raw['expiry']) as number | undefined;
-    // If no expiry field found, assume 90s (observed server behaviour) rather than 3600.
-    const expiresIn = parsed ?? 90;
-    return { token: res.data.token, expiresIn };
+
+    // Dynamic host and compression flag from response
+    type ConclaveInfo = { host?: string; compression?: boolean };
+    const conclaveInfo = raw['conclave'] as ConclaveInfo | undefined;
+    const host = conclaveInfo?.host ?? CONCLAVE_HOST;
+    const compression = conclaveInfo?.compression ?? false;
+
+    if (this.debug) {
+      this.log.info(`[Conclave] Server: ${host}, compression: ${compression}, token expires in ${expiresIn}s`);
+    }
+
+    return { token, expiresIn, host, compression };
   }
 
   private getOrCreateMobileDeviceId(): string {
@@ -534,12 +548,12 @@ class ConclaveClient extends EventEmitter {
   private tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   private backoffMs = 1_000;
   private destroyed = false;
-  private lineBuffer = '';
+  private rawBuffer: Buffer = Buffer.alloc(0);
 
   constructor(
     private readonly accountId: string,
     private readonly mobileDeviceId: string,
-    private readonly fetchConclaveToken: () => Promise<{ token: string; expiresIn: number }>,
+    private readonly fetchConclaveToken: () => Promise<{ token: string; expiresIn: number; host: string; compression: boolean }>,
     private readonly onDeviceChange: (deviceId: string) => void,
     private readonly log: Logger,
     private readonly debug: boolean,
@@ -551,9 +565,9 @@ class ConclaveClient extends EventEmitter {
     if (this.destroyed) return;
     this.dbg('Connecting to Conclave…');
     this.fetchConclaveToken()
-      .then(({ token, expiresIn }) => {
-        this.dbg(`Conclave token acquired — expires in ${expiresIn}s.`);
-        this.openSocket(token, expiresIn);
+      .then(({ token, expiresIn, host, compression }) => {
+        this.dbg(`Token acquired — expires in ${expiresIn}s, host: ${host}, compression: ${compression}`);
+        this.openSocket(token, expiresIn, host, compression);
       })
       .catch((err) => {
         this.log.warn(`[Conclave] Token fetch failed: ${err} — will retry.`);
@@ -561,7 +575,7 @@ class ConclaveClient extends EventEmitter {
       });
   }
 
-  private openSocket(conclaveToken: string, expiresIn: number): void {
+  private openSocket(conclaveToken: string, expiresIn: number, host: string, compression: boolean): void {
     // Proactively reconnect at 80% of token lifetime so we never hit server expiry.
     const refreshMs = Math.floor(expiresIn * 0.8) * 1000;
     this.tokenRefreshTimer = setTimeout(() => {
@@ -573,24 +587,27 @@ class ConclaveClient extends EventEmitter {
     if (this.destroyed) return;
 
     const socket = tls.connect({
-      host: CONCLAVE_HOST,
+      host,
       port: CONCLAVE_PORT,
-      servername: CONCLAVE_HOST,
+      servername: host,
     });
 
     this.socket = socket;
-    this.lineBuffer = '';
+    this.rawBuffer = Buffer.alloc(0);
 
     socket.once('secureConnect', () => {
       this.dbg('TLS connected — waiting for hello.');
     });
 
     socket.on('data', (chunk: Buffer) => {
-      this.lineBuffer += chunk.toString('utf-8');
-      const lines = this.lineBuffer.split('\n');
-      this.lineBuffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const trimmed = line.trim();
+      this.rawBuffer = Buffer.concat([this.rawBuffer, chunk]);
+      let nlPos: number;
+      while ((nlPos = this.rawBuffer.indexOf(0x0a)) !== -1) {
+        const line = this.rawBuffer.subarray(0, nlPos);
+        this.rawBuffer = this.rawBuffer.subarray(nlPos + 1);
+        if (line.length === 0) continue;
+        const text = compression ? this.tryDecompress(line) : line.toString('utf-8');
+        const trimmed = text.trim();
         if (trimmed.length === 0) continue;
         this.handleLine(trimmed, conclaveToken);
       }
@@ -611,6 +628,18 @@ class ConclaveClient extends EventEmitter {
         this.scheduleReconnect();
       }
     });
+  }
+
+  private tryDecompress(chunk: Buffer): string {
+    // Zlib streams start with 0x78 (CMF byte with deflate method + window size).
+    if (chunk.length > 2 && chunk[0] === 0x78) {
+      try {
+        return zlib.inflateSync(chunk).toString('utf-8');
+      } catch {
+        // fall through
+      }
+    }
+    return chunk.toString('utf-8');
   }
 
   private handleLine(line: string, conclaveToken: string): void {
@@ -695,7 +724,7 @@ class ConclaveClient extends EventEmitter {
     }
     const s = this.socket;
     this.socket = null;
-    this.lineBuffer = '';
+    this.rawBuffer = Buffer.alloc(0);
     try { s?.destroy(); } catch { /* ignore */ }
   }
 
