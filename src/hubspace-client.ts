@@ -543,6 +543,8 @@ function isPublic(e: ConclaveEnvelope): e is ConclavePublicMessage {
 
 class ConclaveClient extends EventEmitter {
   private socket: tls.TLSSocket | null = null;
+  private inflateStream: zlib.Inflate | null = null;
+  private deflateStream: zlib.Deflate | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -599,10 +601,7 @@ class ConclaveClient extends EventEmitter {
       this.dbg('TLS connected — waiting for hello.');
     });
 
-    // When compression is enabled the server sends the entire session as a
-    // continuous zlib stream. Splitting on 0x0a before inflating would corrupt
-    // compressed chunks that happen to contain newline bytes, so we pipe through
-    // a streaming inflate and split the decompressed output instead.
+    // Shared data handler: accumulates decompressed (or raw) bytes and splits on \n.
     const onData = (chunk: Buffer) => {
       this.rawBuffer = Buffer.concat([this.rawBuffer, chunk]);
       let nlPos: number;
@@ -617,15 +616,26 @@ class ConclaveClient extends EventEmitter {
     };
 
     if (compression) {
+      // Incoming: socket → inflate → onData (split decompressed lines)
       const inflate = zlib.createInflate();
+      this.inflateStream = inflate;
       inflate.on('data', onData);
       inflate.once('error', (err) => {
+        // Guard: if this socket is already torn down, the error is just EOF cleanup noise.
+        if (this.socket !== socket) return;
         this.log.warn(`[Conclave] Inflate error: ${err.message}`);
         this.teardown();
         this.scheduleReconnect();
       });
       socket.pipe(inflate);
+
+      // Outgoing: write() → deflate → socket (server expects compressed input too)
+      const deflate = zlib.createDeflate({ flush: zlib.constants.Z_SYNC_FLUSH });
+      this.deflateStream = deflate;
+      deflate.pipe(socket, { end: false });
     } else {
+      this.inflateStream = null;
+      this.deflateStream = null;
       socket.on('data', onData);
     }
 
@@ -714,9 +724,13 @@ class ConclaveClient extends EventEmitter {
 
   private write(data: string): void {
     try {
-      this.socket?.write(data, 'utf-8');
+      if (this.deflateStream) {
+        this.deflateStream.write(Buffer.from(data, 'utf-8'));
+      } else {
+        this.socket?.write(data, 'utf-8');
+      }
     } catch {
-      // Socket may have closed between the check and the write; reconnect will handle it.
+      // Socket may have closed; reconnect will handle it.
     }
   }
 
@@ -726,6 +740,15 @@ class ConclaveClient extends EventEmitter {
       clearTimeout(this.tokenRefreshTimer);
       this.tokenRefreshTimer = null;
     }
+    // Destroy compression streams before the socket so they don't fire error events
+    // against a dead socket.
+    const inflate = this.inflateStream;
+    const deflate = this.deflateStream;
+    this.inflateStream = null;
+    this.deflateStream = null;
+    try { inflate?.destroy(); } catch { /* ignore */ }
+    try { deflate?.destroy(); } catch { /* ignore */ }
+
     const s = this.socket;
     this.socket = null;
     this.rawBuffer = Buffer.alloc(0);
