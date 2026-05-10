@@ -19,6 +19,8 @@ export interface HubspaceConfig {
   exposeMasterPowerSwitch?: boolean;
   /** Expose StatusFault on fans and lights when offline (non-standard — may not render in Apple Home; default false). */
   exposeStatusFault?: boolean;
+  /** Set to true to disable the Conclave push connection and rely only on polling. */
+  disableConclave?: boolean;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -31,6 +33,8 @@ export interface AuthTokens {
   expiresAt: number;
   /** Unix timestamp (ms) when the refresh token expires. */
   refreshExpiresAt: number;
+  /** Stable UUID identifying this client to the Conclave push service. */
+  mobileDeviceId?: string;
 }
 
 /** Raw Keycloak token response. */

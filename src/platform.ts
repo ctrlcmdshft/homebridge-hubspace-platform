@@ -28,6 +28,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailCycles = 0;
+  private conclaveActive = false;
   private readonly cfg: HubspaceConfig;
 
   constructor(
@@ -98,6 +99,11 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     try {
       await this.client.initialize();
       await this.discoverDevices();
+      if (!this.cfg.disableConclave) {
+        this.conclaveActive = true;
+        this.client.startConclave((deviceId) => this.scheduleQuickPoll(deviceId, 0));
+        this.log.info('[Hubspace] Conclave push connection started — slow-poll fallback every 300s.');
+      }
       this.startPolling();
     } catch (err) {
       this.log.error('[Hubspace] Start-up failed:', String(err));
@@ -212,7 +218,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   // ─── Polling ──────────────────────────────────────────────────────────────────
 
   private startPolling(): void {
-    const intervalMs = (this.cfg.pollingInterval ?? 30) * 1000;
+    const defaultInterval = this.conclaveActive ? 300 : 30;
+    const intervalMs = (this.cfg.pollingInterval ?? defaultInterval) * 1000;
     this.log.info(
       `[Hubspace] Starting state polling every ${intervalMs / 1000}s.`,
     );

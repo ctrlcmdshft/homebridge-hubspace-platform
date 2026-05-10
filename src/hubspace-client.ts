@@ -1,6 +1,9 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import * as tls from 'tls';
+import * as crypto from 'crypto';
+import { EventEmitter } from 'events';
 import { Logger } from 'homebridge';
 import {
   AuthTokens,
@@ -16,6 +19,11 @@ const AUTH_URL =
 const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
 const CLIENT_ID = 'hubspace_android';
+const CONCLAVE_HOST = 'conclave-stream.afero.io';
+const CONCLAVE_PORT = 443;
+const CONCLAVE_LOGIN_VERSION = '1.3.0';
+const CONCLAVE_PROTOCOL = 2;
+const BACKOFF_MAX_MS = 20_000;
 
 /** Proactively refresh the access token this many ms before it expires. */
 const EXPIRY_BUFFER_MS = 30_000;
@@ -80,6 +88,60 @@ export class HubspaceClient {
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
+
+  /**
+   * Connect to the Conclave push stream. Calls onDeviceChange(deviceId) whenever
+   * Conclave reports an attr_change or status_change. The connection is maintained
+   * internally with exponential-backoff reconnects.
+   */
+  startConclave(onDeviceChange: (deviceId: string) => void): void {
+    const accountId = this.accountId;
+    if (!accountId) {
+      this.log.warn('[Conclave] accountId not yet resolved — Conclave will not start.');
+      return;
+    }
+    const mobileDeviceId = this.getOrCreateMobileDeviceId();
+    const client = new ConclaveClient(
+      accountId,
+      mobileDeviceId,
+      () => this.fetchConclaveToken(),
+      onDeviceChange,
+      this.log,
+      this.debug,
+    );
+    client.connect();
+  }
+
+  async fetchConclaveToken(): Promise<{ token: string; expiresIn: number }> {
+    const accountId = await this.resolveAccountId();
+    const accessToken = await this.getValidAccessToken();
+    const res = await axios.post<{ token: string; expiresIn?: number; expires_in?: number }>(
+      `https://api2.afero.net/v1/accounts/${accountId}/conclaveAccess`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Dart/2.18 (dart:io)',
+          'host': 'api2.afero.net',
+          'accept-encoding': 'gzip',
+        },
+        timeout: 15_000,
+      },
+    );
+    const expiresIn = res.data.expiresIn ?? res.data.expires_in ?? 3600;
+    return { token: res.data.token, expiresIn };
+  }
+
+  private getOrCreateMobileDeviceId(): string {
+    if (this.tokens?.mobileDeviceId) return this.tokens.mobileDeviceId;
+    const id = crypto.randomUUID();
+    if (this.tokens) {
+      this.tokens.mobileDeviceId = id;
+      this.saveCachedTokens().catch(() => {});
+    }
+    return id;
+  }
 
   async initialize(): Promise<void> {
     await this.loadCachedTokens();
@@ -419,5 +481,213 @@ export class HubspaceClient {
       return data?.error_description ?? data?.error ?? err.message;
     }
     return String(err);
+  }
+}
+
+// ─── Conclave push client ────────────────────────────────────────────────────
+
+interface ConclaveHelloMessage {
+  hello: { heartbeat: number; [key: string]: unknown };
+}
+
+interface ConclavePublicMessage {
+  public: {
+    event: string;
+    data: {
+      id?: string;
+      attribute?: unknown;
+      status?: unknown;
+      [key: string]: unknown;
+    };
+  };
+}
+
+type ConclaveEnvelope =
+  | ConclaveHelloMessage
+  | { welcome: unknown }
+  | ConclavePublicMessage
+  | { error: unknown };
+
+function isHello(e: ConclaveEnvelope): e is ConclaveHelloMessage {
+  return 'hello' in e;
+}
+
+function isPublic(e: ConclaveEnvelope): e is ConclavePublicMessage {
+  return 'public' in e;
+}
+
+class ConclaveClient extends EventEmitter {
+  private socket: tls.TLSSocket | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private backoffMs = 1_000;
+  private destroyed = false;
+  private lineBuffer = '';
+
+  constructor(
+    private readonly accountId: string,
+    private readonly mobileDeviceId: string,
+    private readonly fetchConclaveToken: () => Promise<{ token: string; expiresIn: number }>,
+    private readonly onDeviceChange: (deviceId: string) => void,
+    private readonly log: Logger,
+    private readonly debug: boolean,
+  ) {
+    super();
+  }
+
+  connect(): void {
+    if (this.destroyed) return;
+    this.dbg('Connecting to Conclave…');
+    this.fetchConclaveToken()
+      .then(({ token }) => this.openSocket(token))
+      .catch((err) => {
+        this.log.warn(`[Conclave] Token fetch failed: ${err} — will retry.`);
+        this.scheduleReconnect();
+      });
+  }
+
+  private openSocket(conclaveToken: string): void {
+    if (this.destroyed) return;
+
+    const socket = tls.connect({
+      host: CONCLAVE_HOST,
+      port: CONCLAVE_PORT,
+      servername: CONCLAVE_HOST,
+    });
+
+    this.socket = socket;
+    this.lineBuffer = '';
+
+    socket.once('secureConnect', () => {
+      this.dbg('TLS connected — waiting for hello.');
+    });
+
+    socket.on('data', (chunk: Buffer) => {
+      this.lineBuffer += chunk.toString('utf-8');
+      const lines = this.lineBuffer.split('\n');
+      this.lineBuffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0) continue;
+        this.handleLine(trimmed, conclaveToken);
+      }
+    });
+
+    socket.once('error', (err) => {
+      this.log.warn(`[Conclave] Socket error: ${err.message}`);
+      this.teardown();
+      this.scheduleReconnect();
+    });
+
+    socket.once('close', () => {
+      if (!this.destroyed) {
+        this.log.warn('[Conclave] Connection closed — reconnecting.');
+        this.teardown();
+        this.scheduleReconnect();
+      }
+    });
+  }
+
+  private handleLine(line: string, conclaveToken: string): void {
+    let envelope: ConclaveEnvelope;
+    try {
+      envelope = JSON.parse(line) as ConclaveEnvelope;
+    } catch {
+      this.dbg('Non-JSON line from Conclave:', line.slice(0, 120));
+      return;
+    }
+
+    if (isHello(envelope)) {
+      const heartbeatSecs = envelope.hello.heartbeat ?? 270;
+      this.dbg(`Received hello — heartbeat every ${heartbeatSecs}s.`);
+      this.startHeartbeat(heartbeatSecs * 1000);
+      this.sendLogin(conclaveToken);
+      return;
+    }
+
+    if ('welcome' in envelope) {
+      this.dbg('Received welcome — Conclave session active.');
+      this.backoffMs = 1_000;
+      return;
+    }
+
+    if (isPublic(envelope)) {
+      const { event, data } = envelope.public;
+      if (event === 'attr_change' || event === 'status_change') {
+        const deviceId = data?.id;
+        if (typeof deviceId === 'string' && deviceId.length > 0) {
+          this.dbg(`${event} for device ${deviceId}`);
+          this.onDeviceChange(deviceId);
+        }
+      }
+    }
+  }
+
+  private sendLogin(conclaveToken: string): void {
+    const msg = JSON.stringify({
+      login: {
+        channelId: this.accountId,
+        accessToken: conclaveToken,
+        type: 'socket',
+        mobileDeviceId: this.mobileDeviceId,
+        version: CONCLAVE_LOGIN_VERSION,
+        protocol: CONCLAVE_PROTOCOL,
+      },
+    });
+    this.write(msg + '\n');
+    this.dbg('Login sent.');
+  }
+
+  private startHeartbeat(intervalMs: number): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      this.write('\n');
+    }, intervalMs);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private write(data: string): void {
+    try {
+      this.socket?.write(data, 'utf-8');
+    } catch {
+      // Socket may have closed between the check and the write; reconnect will handle it.
+    }
+  }
+
+  private teardown(): void {
+    this.stopHeartbeat();
+    try { this.socket?.destroy(); } catch { /* ignore */ }
+    this.socket = null;
+    this.lineBuffer = '';
+  }
+
+  private scheduleReconnect(): void {
+    if (this.destroyed) return;
+    const delay = this.backoffMs;
+    this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
+    this.dbg(`Reconnecting in ${delay}ms.`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.teardown();
+  }
+
+  private dbg(...args: unknown[]): void {
+    if (this.debug) this.log.debug('[Conclave]', ...args.map(String));
   }
 }
