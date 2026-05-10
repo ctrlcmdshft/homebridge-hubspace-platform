@@ -64,7 +64,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       this.log,
       {
         tokenCachePath: this.cfg.tokenCachePath,
-        debug: this.cfg.debug,
+        debug: this.debug,
       },
     );
 

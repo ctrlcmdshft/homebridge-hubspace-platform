@@ -603,7 +603,9 @@ class ConclaveClient extends EventEmitter {
     });
 
     socket.once('close', () => {
-      if (!this.destroyed) {
+      // Only reconnect for unexpected closes. Intentional teardown nulls this.socket
+      // before calling destroy(), so this.socket !== socket in that case.
+      if (!this.destroyed && this.socket === socket) {
         this.log.warn('[Conclave] Connection closed — reconnecting.');
         this.teardown();
         this.scheduleReconnect();
@@ -691,9 +693,10 @@ class ConclaveClient extends EventEmitter {
       clearTimeout(this.tokenRefreshTimer);
       this.tokenRefreshTimer = null;
     }
-    try { this.socket?.destroy(); } catch { /* ignore */ }
+    const s = this.socket;
     this.socket = null;
     this.lineBuffer = '';
+    try { s?.destroy(); } catch { /* ignore */ }
   }
 
   private scheduleReconnect(): void {
