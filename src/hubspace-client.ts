@@ -599,19 +599,35 @@ class ConclaveClient extends EventEmitter {
       this.dbg('TLS connected — waiting for hello.');
     });
 
-    socket.on('data', (chunk: Buffer) => {
+    // When compression is enabled the server sends the entire session as a
+    // continuous zlib stream. Splitting on 0x0a before inflating would corrupt
+    // compressed chunks that happen to contain newline bytes, so we pipe through
+    // a streaming inflate and split the decompressed output instead.
+    const onData = (chunk: Buffer) => {
       this.rawBuffer = Buffer.concat([this.rawBuffer, chunk]);
       let nlPos: number;
       while ((nlPos = this.rawBuffer.indexOf(0x0a)) !== -1) {
         const line = this.rawBuffer.subarray(0, nlPos);
         this.rawBuffer = this.rawBuffer.subarray(nlPos + 1);
         if (line.length === 0) continue;
-        const text = compression ? this.tryDecompress(line) : line.toString('utf-8');
-        const trimmed = text.trim();
-        if (trimmed.length === 0) continue;
-        this.handleLine(trimmed, conclaveToken);
+        const text = line.toString('utf-8').trim();
+        if (text.length === 0) continue;
+        this.handleLine(text, conclaveToken);
       }
-    });
+    };
+
+    if (compression) {
+      const inflate = zlib.createInflate();
+      inflate.on('data', onData);
+      inflate.once('error', (err) => {
+        this.log.warn(`[Conclave] Inflate error: ${err.message}`);
+        this.teardown();
+        this.scheduleReconnect();
+      });
+      socket.pipe(inflate);
+    } else {
+      socket.on('data', onData);
+    }
 
     socket.once('error', (err) => {
       this.log.warn(`[Conclave] Socket error: ${err.message}`);
@@ -628,18 +644,6 @@ class ConclaveClient extends EventEmitter {
         this.scheduleReconnect();
       }
     });
-  }
-
-  private tryDecompress(chunk: Buffer): string {
-    // Zlib streams start with 0x78 (CMF byte with deflate method + window size).
-    if (chunk.length > 2 && chunk[0] === 0x78) {
-      try {
-        return zlib.inflateSync(chunk).toString('utf-8');
-      } catch {
-        // fall through
-      }
-    }
-    return chunk.toString('utf-8');
   }
 
   private handleLine(line: string, conclaveToken: string): void {
