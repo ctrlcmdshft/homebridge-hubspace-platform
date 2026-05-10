@@ -29,6 +29,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailCycles = 0;
   private conclaveActive = false;
+  private readonly pendingQuickPolls = new Set<string>();
   private readonly cfg: HubspaceConfig;
 
   constructor(
@@ -219,9 +220,11 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   private startPolling(): void {
     const defaultInterval = this.conclaveActive ? 300 : 30;
-    const intervalMs = (this.cfg.pollingInterval ?? defaultInterval) * 1000;
+    const configured = this.cfg.pollingInterval ?? defaultInterval;
+    const intervalSecs = this.conclaveActive ? Math.max(configured, 300) : configured;
+    const intervalMs = intervalSecs * 1000;
     this.log.info(
-      `[Hubspace] Starting state polling every ${intervalMs / 1000}s.`,
+      `[Hubspace] Starting state polling every ${intervalSecs}s${this.conclaveActive ? ' (Conclave fallback)' : ''}.`,
     );
     this.pollTimer = setInterval(() => this.pollDevices(), intervalMs);
     // Run immediately on first start.
@@ -236,7 +239,10 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   }
 
   scheduleQuickPoll(deviceId: string, delayMs: number): void {
+    if (this.pendingQuickPolls.has(deviceId)) return;
+    this.pendingQuickPolls.add(deviceId);
     setTimeout(() => {
+      this.pendingQuickPolls.delete(deviceId);
       const handler = this.handlers.get(deviceId);
       if (!handler) return;
       const allIds = handler.device.allIds ?? [deviceId];
