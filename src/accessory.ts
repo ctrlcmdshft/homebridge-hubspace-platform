@@ -81,7 +81,7 @@ export abstract class BaseHubspaceAccessory {
   updateState(values: DeviceStateValue[]): void {
     this.rebuildStateMap(values);
     if (this.platform.verbose) {
-      this.log.debug(
+      this.log.info(
         `State for "${this.device.friendlyName}": ` +
         values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
       );

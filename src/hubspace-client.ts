@@ -135,7 +135,7 @@ export class HubspaceClient {
         .filter(([k]) => k !== 'token')
         .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
         .join(', ');
-      this.log.debug(`[Conclave] Token response fields: ${fields}`);
+      this.log.info(`[Conclave] Token response fields: ${fields}`);
     }
     const parsed = (raw['expiresIn'] ?? raw['expires_in'] ?? raw['ttl'] ??
       raw['tokenExpiry'] ?? raw['validFor'] ?? raw['expiry']) as number | undefined;
@@ -483,7 +483,7 @@ export class HubspaceClient {
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   private dbg(...args: unknown[]): void {
-    if (this.debug) this.log.debug('[Hubspace]', ...args.map(String));
+    if (this.debug) this.log.info('[Hubspace]', ...args.map(String));
   }
 
   private extractErrorMessage(err: unknown): string {
@@ -720,6 +720,6 @@ class ConclaveClient extends EventEmitter {
   }
 
   private dbg(...args: unknown[]): void {
-    if (this.debug) this.log.debug('[Conclave]', ...args.map(String));
+    if (this.debug) this.log.info('[Conclave]', ...args.map(String));
   }
 }
