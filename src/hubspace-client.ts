@@ -129,7 +129,18 @@ export class HubspaceClient {
         timeout: 15_000,
       },
     );
-    const expiresIn = res.data.expiresIn ?? res.data.expires_in ?? 3600;
+    const raw = res.data as Record<string, unknown>;
+    if (this.debug) {
+      const fields = Object.entries(raw)
+        .filter(([k]) => k !== 'token')
+        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+        .join(', ');
+      this.log.debug(`[Conclave] Token response fields: ${fields}`);
+    }
+    const parsed = (raw['expiresIn'] ?? raw['expires_in'] ?? raw['ttl'] ??
+      raw['tokenExpiry'] ?? raw['validFor'] ?? raw['expiry']) as number | undefined;
+    // If no expiry field found, assume 90s (observed server behaviour) rather than 3600.
+    const expiresIn = parsed ?? 90;
     return { token: res.data.token, expiresIn };
   }
 
