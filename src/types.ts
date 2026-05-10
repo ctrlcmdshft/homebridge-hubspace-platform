@@ -13,6 +13,8 @@ export interface HubspaceConfig {
   /** Override path for the token cache JSON file. */
   tokenCachePath?: string;
   debug?: boolean;
+  /** Log full device state payloads on every update (very noisy; implies debug). */
+  verbose?: boolean;
   /** Expose Comfort Breeze as a separate HomeKit switch tile (default false). */
   exposeComfortBreeze?: boolean;
   /** Expose ceiling-fan master power (power[primary]) as a separate HomeKit switch tile (default false). */

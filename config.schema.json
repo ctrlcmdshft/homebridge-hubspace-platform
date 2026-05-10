@@ -42,7 +42,13 @@
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log verbose state values on every poll cycle and API request/response details. Useful when troubleshooting device control issues."
+        "description": "Log Conclave push events, poll cycles, and token operations. Useful for verifying real-time updates are working."
+      },
+      "verbose": {
+        "title": "Enable Verbose Logging",
+        "type": "boolean",
+        "default": false,
+        "description": "Log full device state payloads on every update (very noisy). Use only when diagnosing missing capabilities or wrong values. Implies debug."
       },
       "exposeComfortBreeze": {
         "title": "Expose Comfort Breeze Switch",
@@ -97,7 +103,7 @@
       "title": "Advanced",
       "expandable": true,
       "expanded": false,
-      "items": ["disableConclave", "pollingInterval", "debug", "name", "tokenCachePath"]
+      "items": ["disableConclave", "pollingInterval", "debug", "verbose", "name", "tokenCachePath"]
     }
   ]
 }

@@ -147,13 +147,13 @@ export class HubspaceClient {
     await this.loadCachedTokens();
 
     if (this.tokens && this.isRefreshTokenValid()) {
-      this.log.info('[Hubspace] Loaded cached tokens — skipping login.');
+      this.log.info('Loaded cached tokens — skipping login.');
       if (this.isAccessTokenExpired()) {
-        this.log.debug('[Hubspace] Access token near expiry; refreshing…');
+        this.log.debug('Access token near expiry; refreshing…');
         await this.doRefresh();
       }
     } else {
-      this.log.info('[Hubspace] No valid cached tokens — authenticating…');
+      this.log.info('No valid cached tokens — authenticating…');
       await this.authenticate();
     }
 
@@ -167,7 +167,7 @@ export class HubspaceClient {
     const res = await this.http.get<HubspaceMetadeviceRaw[]>(
       `/accounts/${accountId}/metadevices?expansions=state`,
     );
-    this.log.debug(`[Hubspace] API returned ${res.data.length} metadevice(s).`);
+    this.log.debug(`API returned ${res.data.length} metadevice(s).`);
 
     const devices: HubspaceDevice[] = [];
     for (const raw of res.data) {
@@ -219,7 +219,7 @@ export class HubspaceClient {
     }
     const result = [...deduped.values()];
 
-    this.log.info(`[Hubspace] ${result.length} controllable device(s) after filtering.`);
+    this.log.info(`${result.length} controllable device(s) after filtering.`);
     return result;
   }
 
@@ -283,7 +283,7 @@ export class HubspaceClient {
       data = res.data;
     } catch (err) {
       throw new Error(
-        `[Hubspace] /v1/users/me failed: ${this.extractErrorMessage(err)}`,
+        `/v1/users/me failed: ${this.extractErrorMessage(err)}`,
       );
     }
 
@@ -293,11 +293,11 @@ export class HubspaceClient {
     const accountId = access?.[0]?.account?.accountId;
     if (!accountId) {
       throw new Error(
-        `[Hubspace] accountId missing from /v1/users/me — response: ${JSON.stringify(data).slice(0, 300)}`,
+        `accountId missing from /v1/users/me — response: ${JSON.stringify(data).slice(0, 300)}`,
       );
     }
 
-    this.log.info(`[Hubspace] Account ID resolved: ${accountId}`);
+    this.log.info(`Account ID resolved: ${accountId}`);
     this.accountId = accountId;
     return accountId;
   }
@@ -311,7 +311,7 @@ export class HubspaceClient {
   }
 
   private async _doAuthenticate(): Promise<void> {
-    this.log.info('[Hubspace] Authenticating with username/password…');
+    this.log.info('Authenticating with username/password…');
     const params = new URLSearchParams({
       grant_type: 'password',
       client_id: CLIENT_ID,
@@ -336,20 +336,20 @@ export class HubspaceClient {
       data = res.data;
     } catch (err) {
       throw new Error(
-        `[Hubspace] Authentication failed: ${this.extractErrorMessage(err)}`,
+        `Authentication failed: ${this.extractErrorMessage(err)}`,
       );
     }
 
     if (data.error) {
       throw new Error(
-        `[Hubspace] Auth error: ${data.error} — ${data.error_description ?? ''}`,
+        `Auth error: ${data.error} — ${data.error_description ?? ''}`,
       );
     }
 
     this.storeTokens(data);
     await this.saveCachedTokens();
     this.log.info(
-      `[Hubspace] Authentication successful — access token expires in ${data.expires_in}s, ` +
+      `Authentication successful — access token expires in ${data.expires_in}s, ` +
       `refresh token expires in ${Math.round(data.refresh_expires_in / 60)}m.`,
     );
   }
@@ -359,7 +359,7 @@ export class HubspaceClient {
 
     this.refreshInFlight = (async () => {
       if (!this.tokens?.refreshToken) throw new Error('No refresh token available');
-      this.log.debug('[Hubspace] Refreshing access token…');
+      this.log.debug('Refreshing access token…');
       const params = new URLSearchParams({
         grant_type: 'refresh_token',
         client_id: CLIENT_ID,
@@ -376,10 +376,10 @@ export class HubspaceClient {
         );
         this.storeTokens(res.data);
         await this.saveCachedTokens();
-        this.log.debug('[Hubspace] Token refresh successful.');
+        this.log.debug('Token refresh successful.');
       } catch (err) {
         this.log.warn(
-          `[Hubspace] Token refresh failed: ${this.extractErrorMessage(err)} — will re-authenticate.`,
+          `Token refresh failed: ${this.extractErrorMessage(err)} — will re-authenticate.`,
         );
         throw err;
       } finally {
@@ -433,15 +433,15 @@ export class HubspaceClient {
       const raw = await fs.readFile(this.tokenCachePath, 'utf-8');
       const cached = JSON.parse(raw) as AuthTokens;
       if (cached.username && cached.username !== this.username) {
-        this.log.info('[Hubspace] Cached tokens belong to a different account — discarding.');
+        this.log.info('Cached tokens belong to a different account — discarding.');
         await fs.unlink(this.tokenCachePath);
         return;
       }
       this.tokens = cached;
-      this.log.debug('[Hubspace] Loaded token cache from disk.');
+      this.log.debug('Loaded token cache from disk.');
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.log.debug('[Hubspace] Could not read token cache — ignoring.');
+        this.log.debug('Could not read token cache — ignoring.');
       }
       this.tokens = null;
     }
@@ -455,7 +455,7 @@ export class HubspaceClient {
       await fs.writeFile(tmp, JSON.stringify(this.tokens, null, 2), 'utf-8');
       await fs.rename(tmp, this.tokenCachePath);
     } catch (err) {
-      this.log.warn(`[Hubspace] Could not save token cache: ${err}`);
+      this.log.warn(`Could not save token cache: ${err}`);
     }
   }
 

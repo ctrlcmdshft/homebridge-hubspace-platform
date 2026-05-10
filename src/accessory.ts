@@ -80,9 +80,9 @@ export abstract class BaseHubspaceAccessory {
   /** Called by the platform on each poll cycle with fresh state data. */
   updateState(values: DeviceStateValue[]): void {
     this.rebuildStateMap(values);
-    if (this.platform.debug) {
-      this.log.info(
-        `[Hubspace] State for "${this.device.friendlyName}": ` +
+    if (this.platform.verbose) {
+      this.log.debug(
+        `State for "${this.device.friendlyName}": ` +
         values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
       );
     }
@@ -120,7 +120,7 @@ export abstract class BaseHubspaceAccessory {
         ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? err.message}` +
           (err.response?.data?.requestId ? ` (requestId: ${err.response.data.requestId})` : '')
         : String(err);
-      this.log.error(`[Hubspace] Failed to set state for "${this.device.friendlyName}": ${detail}`);
+      this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail}`);
       // Revert optimistic state immediately on failure.
       this.platform.scheduleQuickPoll(this.device.id, 0);
     }
@@ -650,7 +650,7 @@ export function createAccessory(
   }
 
   platform.log.warn(
-    `[Hubspace] Unsupported deviceClass "${device.deviceClass}" for "${device.friendlyName}" — skipping.`,
+    `Unsupported deviceClass "${device.deviceClass}" for "${device.friendlyName}" — skipping.`,
   );
   return null;
 }
