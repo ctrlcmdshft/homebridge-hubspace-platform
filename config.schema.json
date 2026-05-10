@@ -49,6 +49,12 @@
         "type": "boolean",
         "default": false,
         "description": "Show Comfort Breeze as a separate HomeKit switch tile for supported fans. When disabled (default), Comfort Breeze is hidden and the fan tile tap toggles power directly."
+      },
+      "exposeMasterPowerSwitch": {
+        "title": "Expose Master Power Switch",
+        "type": "boolean",
+        "default": false,
+        "description": "Show the ceiling-fan master power (power[primary]) as a separate HomeKit switch tile. Only applies to fans that have a dedicated fan-power field alongside a master power field."
       }
     },
     "required": ["username", "password"],
@@ -72,7 +78,7 @@
     {
       "type": "fieldset",
       "title": "Device Options",
-      "items": ["exposeComfortBreeze"]
+      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch"]
     },
     {
       "type": "fieldset",

@@ -327,6 +327,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
   declare private fanSvc: Service;
   declare private lightSvc: Service | null;
   private cbAcc: PlatformAccessory | null = null;
+  private mpAcc: PlatformAccessory | null = null;
 
   protected setupServices(): void {
     this.lightSvc = null;
@@ -423,6 +424,35 @@ export class FanAccessory extends BaseHubspaceAccessory {
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
   }
 
+  // ── Master power companion accessory ─────────────────────────────────────────
+
+  /** True only when a separate fan-power instance exists, making power[primary] genuinely unused master power. */
+  public hasMasterPower(): boolean {
+    return (
+      this.findValue(FC.POWER, 'primary') !== undefined &&
+      this.findValue(FC.POWER, 'fan-power') !== undefined
+    );
+  }
+
+  public setupMasterPowerCompanion(pAcc: PlatformAccessory): void {
+    this.mpAcc = pAcc;
+    const svc =
+      pAcc.getService(this.platform.Service.Switch) ??
+      pAcc.addService(this.platform.Service.Switch, 'Master Power');
+    svc.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => this.getMasterPower())
+      .onSet(async (v) => this.setMasterPower(v as boolean));
+  }
+
+  private getMasterPower(): CharacteristicValue {
+    const v = this.findValue(FC.POWER, 'primary');
+    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+  }
+
+  private async setMasterPower(on: boolean): Promise<void> {
+    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off', 'primary')]);
+  }
+
   // ── Comfort Breeze companion accessory ───────────────────────────────────────
 
   public hasComfortBreeze(): boolean {
@@ -510,6 +540,11 @@ export class FanAccessory extends BaseHubspaceAccessory {
     if (this.cbAcc) {
       this.cbAcc.getService(this.platform.Service.Switch)
         ?.updateCharacteristic(this.platform.Characteristic.On, this.getComfortBreeze());
+    }
+
+    if (this.mpAcc) {
+      this.mpAcc.getService(this.platform.Service.Switch)
+        ?.updateCharacteristic(this.platform.Characteristic.On, this.getMasterPower());
     }
   }
 }

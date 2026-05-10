@@ -15,6 +15,8 @@ export interface HubspaceConfig {
   debug?: boolean;
   /** Expose Comfort Breeze as a separate HomeKit switch tile (default false). */
   exposeComfortBreeze?: boolean;
+  /** Expose ceiling-fan master power (power[primary]) as a separate HomeKit switch tile (default false). */
+  exposeMasterPowerSwitch?: boolean;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

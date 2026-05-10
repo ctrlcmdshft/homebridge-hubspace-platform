@@ -148,6 +148,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
           this.handlers.set(device.id, handler);
           this.log.info(`[Hubspace] Restored: "${device.friendlyName}" (${device.deviceClass})`);
           this.setupComfortBreezeCompanion(handler, device.id, seenUUIDs);
+          this.setupMasterPowerCompanion(handler, device.id, seenUUIDs);
         }
       } else {
         // Register a brand-new accessory.
@@ -163,6 +164,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [pAccessory]);
           this.log.info(`[Hubspace] Registered: "${device.friendlyName}" (${device.deviceClass})`);
           this.setupComfortBreezeCompanion(handler, device.id, seenUUIDs);
+          this.setupMasterPowerCompanion(handler, device.id, seenUUIDs);
         }
       }
     }
@@ -275,6 +277,30 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+  private setupMasterPowerCompanion(
+    handler: BaseHubspaceAccessory,
+    deviceId: string,
+    seenUUIDs: Set<string>,
+  ): void {
+    if (!this.cfg.exposeMasterPowerSwitch) return;
+    if (!(handler instanceof FanAccessory) || !handler.hasMasterPower()) return;
+
+    const mpUUID = this.api.hap.uuid.generate(deviceId + '-mp');
+    seenUUIDs.add(mpUUID);
+
+    const existing = this.cachedAccessories.get(mpUUID);
+    if (existing) {
+      handler.setupMasterPowerCompanion(existing);
+      this.log.info(`[Hubspace] Restored Master Power companion for "${handler.device.friendlyName}"`);
+    } else {
+      const mpAcc = new this.api.platformAccessory('Master Power', mpUUID);
+      mpAcc.context = { deviceId, deviceClass: 'master-power', typeId: '', friendlyName: 'Master Power', companionFor: deviceId };
+      handler.setupMasterPowerCompanion(mpAcc);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [mpAcc]);
+      this.log.info(`[Hubspace] Registered Master Power companion for "${handler.device.friendlyName}"`);
+    }
+  }
 
   private setupComfortBreezeCompanion(
     handler: BaseHubspaceAccessory,
