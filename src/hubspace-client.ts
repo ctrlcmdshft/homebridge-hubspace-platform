@@ -599,9 +599,10 @@ class ConclaveClient extends EventEmitter {
 
     if (isHello(envelope)) {
       const heartbeatSecs = envelope.hello.heartbeat ?? 270;
-      this.dbg(`Received hello — heartbeat every ${heartbeatSecs}s.`);
-      // Send at 80% of the server interval so the keepalive arrives well before the deadline.
-      this.startHeartbeat(Math.floor(heartbeatSecs * 0.8) * 1000);
+      // Cap at 55s to keep NAT/firewall tables alive regardless of server-specified interval.
+      const effectiveHeartbeatMs = Math.min(Math.floor(heartbeatSecs * 0.8), 55) * 1000;
+      this.dbg(`Received hello — heartbeat every ${effectiveHeartbeatMs / 1000}s (server: ${heartbeatSecs}s).`);
+      this.startHeartbeat(effectiveHeartbeatMs);
       this.sendLogin(conclaveToken);
       return;
     }
