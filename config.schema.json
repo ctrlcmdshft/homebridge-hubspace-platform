@@ -31,7 +31,7 @@
         "default": 30,
         "minimum": 10,
         "maximum": 600,
-        "description": "How often to poll Hubspace for device state updates. Lower values are more responsive but use more bandwidth. Default: 30 s."
+        "description": "Fallback poll interval in seconds. When Conclave push is active (default), this is floored at 300 s — real-time updates come via Conclave regardless. Only matters if Conclave is disabled."
       },
       "tokenCachePath": {
         "title": "Token Cache Path (advanced)",
@@ -61,6 +61,12 @@
         "type": "boolean",
         "default": false,
         "description": "Show a fault indicator on fan and light tiles when a device goes offline. Non-standard per HAP spec — visible in third-party HomeKit apps (Eve, Controller for HomeKit); may not display in Apple Home."
+      },
+      "disableConclave": {
+        "title": "Disable Conclave Push",
+        "type": "boolean",
+        "default": false,
+        "description": "Disable the real-time Conclave push connection and fall back to polling only. Use this if you experience persistent connection issues."
       }
     },
     "required": ["username", "password"],
@@ -91,7 +97,7 @@
       "title": "Advanced",
       "expandable": true,
       "expanded": false,
-      "items": ["pollingInterval", "debug", "name", "tokenCachePath"]
+      "items": ["disableConclave", "pollingInterval", "debug", "name", "tokenCachePath"]
     }
   ]
 }
