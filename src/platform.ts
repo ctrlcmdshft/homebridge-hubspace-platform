@@ -23,6 +23,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   public readonly client: HubspaceClient;
   public readonly debug: boolean;
+  public readonly exposeStatusFault: boolean;
   private readonly configured: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -38,6 +39,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.Characteristic = this.api.hap.Characteristic;
     this.cfg = config as HubspaceConfig;
     this.debug = this.cfg.debug ?? false;
+    this.exposeStatusFault = this.cfg.exposeStatusFault ?? false;
 
     if (!this.cfg.username || !this.cfg.password) {
       this.log.warn(

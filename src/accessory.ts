@@ -199,6 +199,12 @@ export class LightAccessory extends BaseHubspaceAccessory {
         .onGet(() => this.getSaturation())
         .onSet(async (v) => this.setPendingSat(v as number));
     }
+
+    // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
+    if (this.platform.exposeStatusFault) {
+      this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
+    }
   }
 
   // ── Getters ───────────────────────────────────────────────────────────────────
@@ -318,6 +324,10 @@ export class LightAccessory extends BaseHubspaceAccessory {
       this.svc.updateCharacteristic(
         this.platform.Characteristic.Saturation, this.getSaturation());
     }
+    if (this.platform.exposeStatusFault) {
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
+    }
   }
 }
 
@@ -353,6 +363,12 @@ export class FanAccessory extends BaseHubspaceAccessory {
         .onSet(async (v) => this.setFanSpeed(v as number));
     }
 
+
+    // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
+    if (this.platform.exposeStatusFault) {
+      this.fanSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
+    }
 
     // ── Optional light kit service ────────────────────────────────────────────
     const lightPower = this.findValue(FC.POWER, 'light-power');
@@ -545,6 +561,11 @@ export class FanAccessory extends BaseHubspaceAccessory {
     if (this.mpAcc) {
       this.mpAcc.getService(this.platform.Service.Switch)
         ?.updateCharacteristic(this.platform.Characteristic.On, this.getMasterPower());
+    }
+
+    if (this.platform.exposeStatusFault) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
     }
   }
 }

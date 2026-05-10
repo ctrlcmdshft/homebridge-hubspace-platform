@@ -26,11 +26,12 @@ function makeSvcMock() {
 const Active = { ACTIVE: 1, INACTIVE: 0 };
 const StatusFault = { NO_FAULT: 0, GENERAL_FAULT: 1 };
 
-function makePlatform() {
+function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
   const svc = makeSvcMock();
   return {
     log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
     debug: false,
+    exposeStatusFault: opts.exposeStatusFault ?? false,
     client: { setDeviceState: jest.fn().mockResolvedValue(undefined) },
     scheduleQuickPoll: jest.fn(),
     Service: {
@@ -242,6 +243,46 @@ describe('FanAccessory', () => {
       expect(fanAcc.hasComfortBreeze()).toBe(false);
     });
   });
+
+  describe('StatusFault (exposeStatusFault)', () => {
+    it('pushes NO_FAULT when available is true and exposeStatusFault is enabled', () => {
+      const platform = makePlatform({ exposeStatusFault: true });
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power'), sv(FC.AVAILABLE, true)]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+
+      fanAcc.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.NO_FAULT,
+      );
+    });
+
+    it('pushes GENERAL_FAULT when available is false and exposeStatusFault is enabled', () => {
+      const platform = makePlatform({ exposeStatusFault: true });
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power'), sv(FC.AVAILABLE, false)]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+
+      fanAcc.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.GENERAL_FAULT,
+      );
+    });
+
+    it('does not push StatusFault when exposeStatusFault is disabled', () => {
+      const platform = makePlatform({ exposeStatusFault: false });
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([sv(FC.POWER, 'on', 'fan-power'), sv(FC.AVAILABLE, false)]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+
+      fanAcc.updateState(device.values);
+
+      const calls = (platform._svc.updateCharacteristic.mock.calls as any[]);
+      expect(calls.some(c => c[0] === StatusFault)).toBe(false);
+    });
+  });
 });
 
 // ── LightAccessory ────────────────────────────────────────────────────────────
@@ -302,6 +343,33 @@ describe('LightAccessory', () => {
       lightAcc.updateState([sv(FC.POWER, 'on')]);
 
       expect(platform._svc.updateCharacteristic).toHaveBeenLastCalledWith('On', true);
+    });
+  });
+
+  describe('StatusFault (exposeStatusFault)', () => {
+    it('pushes GENERAL_FAULT when available is false and exposeStatusFault is enabled', () => {
+      const platform = makePlatform({ exposeStatusFault: true });
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.POWER, 'on'), sv(FC.AVAILABLE, false)]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+
+      lightAcc.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.GENERAL_FAULT,
+      );
+    });
+
+    it('does not push StatusFault when exposeStatusFault is disabled', () => {
+      const platform = makePlatform({ exposeStatusFault: false });
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.POWER, 'on'), sv(FC.AVAILABLE, false)]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+
+      lightAcc.updateState(device.values);
+
+      const calls = (platform._svc.updateCharacteristic.mock.calls as any[]);
+      expect(calls.some(c => c[0] === StatusFault)).toBe(false);
     });
   });
 });

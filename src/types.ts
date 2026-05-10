@@ -17,6 +17,8 @@ export interface HubspaceConfig {
   exposeComfortBreeze?: boolean;
   /** Expose ceiling-fan master power (power[primary]) as a separate HomeKit switch tile (default false). */
   exposeMasterPowerSwitch?: boolean;
+  /** Expose StatusFault on fans and lights when offline (non-standard — may not render in Apple Home; default false). */
+  exposeStatusFault?: boolean;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
