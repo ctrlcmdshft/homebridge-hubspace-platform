@@ -25,6 +25,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   public readonly debug: boolean;
   public readonly verbose: boolean;
   public readonly exposeStatusFault: boolean;
+  public readonly invertOutletStatus: boolean;
   private readonly configured: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -44,6 +45,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.debug = this.cfg.debug ?? this.cfg.verbose ?? false;
     this.verbose = this.cfg.verbose ?? false;
     this.exposeStatusFault = this.cfg.exposeStatusFault ?? false;
+    this.invertOutletStatus = this.cfg.invertOutletStatus ?? false;
 
     if (!this.cfg.username || !this.cfg.password) {
       this.log.warn(

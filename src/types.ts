@@ -23,6 +23,8 @@ export interface HubspaceConfig {
   exposeStatusFault?: boolean;
   /** Set to true to disable the Conclave push connection and rely only on polling. */
   disableConclave?: boolean;
+  /** Invert outlet/plug on-state (for devices that report state backwards; default false). */
+  invertOutletStatus?: boolean;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

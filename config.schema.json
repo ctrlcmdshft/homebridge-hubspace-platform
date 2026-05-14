@@ -68,6 +68,12 @@
         "default": false,
         "description": "Show a fault indicator on fan and light tiles when a device goes offline. Non-standard per HAP spec — visible in third-party HomeKit apps (Eve, Controller for HomeKit); may not display in Apple Home."
       },
+      "invertOutletStatus": {
+        "title": "Invert Outlet Status",
+        "type": "boolean",
+        "default": false,
+        "description": "Invert the reported on/off state for outlets and plugs. Enable if your outlet appears on in HomeKit when it is physically off."
+      },
       "disableConclave": {
         "title": "Disable Conclave Push",
         "type": "boolean",
@@ -96,7 +102,7 @@
     {
       "type": "fieldset",
       "title": "Device Options",
-      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault"]
+      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault", "invertOutletStatus"]
     },
     {
       "type": "fieldset",

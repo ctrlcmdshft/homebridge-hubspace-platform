@@ -605,12 +605,14 @@ export class OutletAccessory extends BaseHubspaceAccessory {
 
   private getPower(): CharacteristicValue {
     const v = this.findValue(FC.POWER) ?? this.findValue(FC.TOGGLE);
-    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+    const raw = v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+    return this.platform.invertOutletStatus ? !raw : raw;
   }
 
   private async setPower(on: boolean): Promise<void> {
     const fc = this.findValue(FC.POWER) ? FC.POWER : FC.TOGGLE;
-    await this.setDeviceValues([this.buildPatch(fc, on ? 'on' : 'off')]);
+    const send = this.platform.invertOutletStatus ? !on : on;
+    await this.setDeviceValues([this.buildPatch(fc, send ? 'on' : 'off')]);
   }
 
   protected pushCharacteristics(): void {
