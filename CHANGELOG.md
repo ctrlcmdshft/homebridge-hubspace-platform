@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.2.0] - 2026-05-14
+
+### Features
+
+- **Conclave real-time push** — the plugin now subscribes to the Afero Conclave TLS push service for real-time `attr_change` events; only the changed device is re-fetched from the API, eliminating unnecessary polling after every state change; a configurable slow-poll fallback remains active (floor of 300 s when Conclave is connected); can be disabled with `"disableConclave": true`
+- **Comfort Breeze companion tile** — opt-in `exposeComfortBreeze: true` adds a separate "Comfort Breeze" Switch tile for fans that report the `toggle[comfort-breeze]` capability; off by default to keep tile count minimal
+- **Master power switch tile** — opt-in `exposeMasterPowerSwitch: true` exposes the ceiling-fan master power relay as a standalone Switch tile on fans where the master relay is separate from the fan control itself
+- **StatusFault on fans and lights** — opt-in `exposeStatusFault: true` extends offline detection to Fanv2 and Lightbulb accessories (outlets have had it since 1.1.22); uses `addOptionalCharacteristic` to prevent HAP validation warnings
+- **Invert outlet status** — opt-in `invertOutletStatus: true` for smart plugs that report their on/off state inverted relative to what HomeKit expects
+- **Verbose state logging** — opt-in `verbose: true` logs the full device state payload on every poll and every Conclave push; intended for API exploration and bug reports
+
+### Bug Fixes
+
+- **Fan speed range** — RotationSpeed now uses a 0–100 range with 25-step increments (was 25–100, showing as 0–75 in iOS); `setSpeed(0)` sends a power-off command; `getSpeed()` returns 0 when the fan is inactive
+- **RotationSpeed HAP warning** — eliminated the "illegal value: number 0 exceeded minimum of 25" startup warning by applying the correct prop order on characteristic initialisation
+- **pollingInterval honoured when Conclave is active** — previously Conclave replaced polling entirely regardless of config; the configured `pollingInterval` is now respected (with a 300 s floor when Conclave is connected)
+- **Conclave heartbeat** — capped at 55 s to prevent NAT/firewall idle-timeout disconnects (server suggests 60 s, which is too close to many gateway idle limits)
+- **Conclave teardown race** — nulling `this.socket` before calling `s.destroy()` prevents a duplicate reconnect when intentionally disconnecting
+
+### Maintenance
+
+- **displayName** — corrected plugin display name from "Hubspace Platform" to "Homebridge Hubspace Platform" so the Homebridge UI plugin search shows the full name
+- **Plugin-gated debug messages** — messages controlled by the plugin's own `debug`/`verbose` flags now use `log.info()` instead of `log.debug()`; `log.debug()` is silenced by Homebridge unless its own global debug mode (`-D`) is enabled, making plugin-level debug flags invisible to users
+
+---
+
+## [1.1.22] - 2026-05-07
+
+### Features
+
+- **fans:** add Comfort Breeze switch — exposes the `toggle[comfort-breeze]` capability as a HomeKit Switch service on ceiling fans that support it; only appears if the device reports the capability
+- **outlets:** offline detection via `available` field — when the Hubspace cloud reports an outlet as unavailable, HomeKit now shows a `StatusFault` indicator; clears automatically when the device comes back online (`StatusFault` is only valid on the Outlet service per the HAP spec)
+
 ## [1.1.21] - 2026-05-07
 
 ### Bug Fixes

@@ -80,13 +80,23 @@ export abstract class BaseHubspaceAccessory {
   /** Called by the platform on each poll cycle with fresh state data. */
   updateState(values: DeviceStateValue[]): void {
     this.rebuildStateMap(values);
-    if (this.platform.debug) {
+    if (this.platform.verbose) {
       this.log.info(
-        `[Hubspace] State for "${this.device.friendlyName}": ` +
+        `State for "${this.device.friendlyName}": ` +
         values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
       );
     }
     this.pushCharacteristics();
+  }
+
+  // ── Fault status ──────────────────────────────────────────────────────────────
+
+  protected getStatusFault(): CharacteristicValue {
+    const v = this.findValue(FC.AVAILABLE);
+    if (v === undefined) return this.platform.Characteristic.StatusFault.NO_FAULT;
+    return (v.value === true || v.value === 'true' || v.value === 1)
+      ? this.platform.Characteristic.StatusFault.NO_FAULT
+      : this.platform.Characteristic.StatusFault.GENERAL_FAULT;
   }
 
   // ── Abstract interface ────────────────────────────────────────────────────────
@@ -110,7 +120,7 @@ export abstract class BaseHubspaceAccessory {
         ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? err.message}` +
           (err.response?.data?.requestId ? ` (requestId: ${err.response.data.requestId})` : '')
         : String(err);
-      this.log.error(`[Hubspace] Failed to set state for "${this.device.friendlyName}": ${detail}`);
+      this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail}`);
       // Revert optimistic state immediately on failure.
       this.platform.scheduleQuickPoll(this.device.id, 0);
     }
@@ -188,6 +198,13 @@ export class LightAccessory extends BaseHubspaceAccessory {
       this.svc.getCharacteristic(this.platform.Characteristic.Saturation)
         .onGet(() => this.getSaturation())
         .onSet(async (v) => this.setPendingSat(v as number));
+    }
+
+    // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
+    if (this.platform.exposeStatusFault) {
+      this.svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+      this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
     }
   }
 
@@ -308,6 +325,10 @@ export class LightAccessory extends BaseHubspaceAccessory {
       this.svc.updateCharacteristic(
         this.platform.Characteristic.Saturation, this.getSaturation());
     }
+    if (this.platform.exposeStatusFault) {
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
+    }
   }
 }
 
@@ -316,6 +337,8 @@ export class LightAccessory extends BaseHubspaceAccessory {
 export class FanAccessory extends BaseHubspaceAccessory {
   declare private fanSvc: Service;
   declare private lightSvc: Service | null;
+  private cbAcc: PlatformAccessory | null = null;
+  private mpAcc: PlatformAccessory | null = null;
 
   protected setupServices(): void {
     this.lightSvc = null;
@@ -331,15 +354,23 @@ export class FanAccessory extends BaseHubspaceAccessory {
       .onGet(() => this.getFanActive())
       .onSet(async (v) => this.setFanActive(v as number, fanPower?.functionInstance));
 
-    // Rotation speed — 4 discrete steps (25/50/75/100); on/off via Active toggle.
+
+    // Rotation speed — 0 = off, 25/50/75/100 = speed steps.
     if (this.findValue(FC.FAN_SPEED)) {
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .updateValue(this.getFanSpeed())
-        .setProps({ minValue: 25, maxValue: 100, minStep: 25 })
+        .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
         .onGet(() => this.getFanSpeed())
         .onSet(async (v) => this.setFanSpeed(v as number));
     }
 
+
+    // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
+    if (this.platform.exposeStatusFault) {
+      this.fanSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+      this.fanSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
+    }
 
     // ── Optional light kit service ────────────────────────────────────────────
     const lightPower = this.findValue(FC.POWER, 'light-power');
@@ -362,6 +393,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
           .onSet(async (v) => this.setLightBrightness(v as number));
       }
     }
+
   }
 
   // ── Fan getters / setters ─────────────────────────────────────────────────────
@@ -394,14 +426,78 @@ export class FanAccessory extends BaseHubspaceAccessory {
   }
 
   private getFanSpeed(): CharacteristicValue {
+    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
     const v = this.findValue(FC.FAN_SPEED);
-    return v ? Math.max(25, hubspeedToPercent(String(v.value))) : 50;
+    return v ? hubspeedToPercent(String(v.value)) : 50;
   }
 
   private async setFanSpeed(percent: number): Promise<void> {
+    if (percent === 0) {
+      const fanPower = this.findFanPowerValue();
+      await this.setDeviceValues([this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance)]);
+      return;
+    }
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  // ── Master power companion accessory ─────────────────────────────────────────
+
+  /** True only when a separate fan-power instance exists, making power[primary] genuinely unused master power. */
+  public hasMasterPower(): boolean {
+    return (
+      this.findValue(FC.POWER, 'primary') !== undefined &&
+      this.findValue(FC.POWER, 'fan-power') !== undefined
+    );
+  }
+
+  public setupMasterPowerCompanion(pAcc: PlatformAccessory): void {
+    this.mpAcc = pAcc;
+    const svc =
+      pAcc.getService(this.platform.Service.Switch) ??
+      pAcc.addService(this.platform.Service.Switch, 'Master Power');
+    svc.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => this.getMasterPower())
+      .onSet(async (v) => this.setMasterPower(v as boolean));
+  }
+
+  private getMasterPower(): CharacteristicValue {
+    const v = this.findValue(FC.POWER, 'primary');
+    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+  }
+
+  private async setMasterPower(on: boolean): Promise<void> {
+    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off', 'primary')]);
+  }
+
+  // ── Comfort Breeze companion accessory ───────────────────────────────────────
+
+  public hasComfortBreeze(): boolean {
+    return this.findValue(FC.TOGGLE, 'comfort-breeze') !== undefined;
+  }
+
+  public setupComfortBreezeCompanion(pAcc: PlatformAccessory): void {
+    this.cbAcc = pAcc;
+    const svc =
+      pAcc.getService(this.platform.Service.Switch) ??
+      pAcc.addService(this.platform.Service.Switch, 'Comfort Breeze');
+    svc.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => this.getComfortBreeze())
+      .onSet(async (v) => this.setComfortBreeze(v as boolean));
+  }
+
+  // ── Comfort Breeze getters / setters ─────────────────────────────────────────
+
+  private getComfortBreeze(): CharacteristicValue {
+    const v = this.findValue(FC.TOGGLE, 'comfort-breeze');
+    return v?.value === 'enabled' || v?.value === true || v?.value === 1;
+  }
+
+  private async setComfortBreeze(on: boolean): Promise<void> {
+    await this.setDeviceValues([
+      this.buildPatch(FC.TOGGLE, on ? 'enabled' : 'disabled', 'comfort-breeze'),
+    ]);
   }
 
   // ── Light-kit getters / setters ───────────────────────────────────────────────
@@ -458,6 +554,21 @@ export class FanAccessory extends BaseHubspaceAccessory {
           this.platform.Characteristic.Brightness, this.getLightBrightness());
       }
     }
+
+    if (this.cbAcc) {
+      this.cbAcc.getService(this.platform.Service.Switch)
+        ?.updateCharacteristic(this.platform.Characteristic.On, this.getComfortBreeze());
+    }
+
+    if (this.mpAcc) {
+      this.mpAcc.getService(this.platform.Service.Switch)
+        ?.updateCharacteristic(this.platform.Characteristic.On, this.getMasterPower());
+    }
+
+    if (this.platform.exposeStatusFault) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
+    }
   }
 }
 
@@ -483,21 +594,25 @@ export class OutletAccessory extends BaseHubspaceAccessory {
       .onGet(() => this.getPower())
       .onSet(async (v) => this.setPower(v as boolean));
 
-    // OutletInUse is required for the Outlet service (true whenever powered on).
+    // OutletInUse and StatusFault are optional on the Outlet service (not Switch).
     if (useOutletService) {
       this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
         .onGet(() => this.getPower());
+      this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
     }
   }
 
   private getPower(): CharacteristicValue {
     const v = this.findValue(FC.POWER) ?? this.findValue(FC.TOGGLE);
-    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+    const raw = v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+    return this.platform.invertOutletStatus ? !raw : raw;
   }
 
   private async setPower(on: boolean): Promise<void> {
     const fc = this.findValue(FC.POWER) ? FC.POWER : FC.TOGGLE;
-    await this.setDeviceValues([this.buildPatch(fc, on ? 'on' : 'off')]);
+    const send = this.platform.invertOutletStatus ? !on : on;
+    await this.setDeviceValues([this.buildPatch(fc, send ? 'on' : 'off')]);
   }
 
   protected pushCharacteristics(): void {
@@ -505,6 +620,8 @@ export class OutletAccessory extends BaseHubspaceAccessory {
     if (this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)) {
       this.svc.updateCharacteristic(
         this.platform.Characteristic.OutletInUse, this.getPower());
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
     }
   }
 }
@@ -535,7 +652,7 @@ export function createAccessory(
   }
 
   platform.log.warn(
-    `[Hubspace] Unsupported deviceClass "${device.deviceClass}" for "${device.friendlyName}" — skipping.`,
+    `Unsupported deviceClass "${device.deviceClass}" for "${device.friendlyName}" — skipping.`,
   );
   return null;
 }

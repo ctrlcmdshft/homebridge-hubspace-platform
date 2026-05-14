@@ -31,7 +31,7 @@
         "default": 30,
         "minimum": 10,
         "maximum": 600,
-        "description": "How often to poll Hubspace for device state updates. Lower values are more responsive but use more bandwidth. Default: 30 s."
+        "description": "Fallback poll interval in seconds. When Conclave push is active (default), this is floored at 300 s — real-time updates come via Conclave regardless. Only matters if Conclave is disabled."
       },
       "tokenCachePath": {
         "title": "Token Cache Path (advanced)",
@@ -42,7 +42,43 @@
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log verbose state values on every poll cycle and API request/response details. Useful when troubleshooting device control issues."
+        "description": "Log Conclave push events, poll cycles, and token operations. Useful for verifying real-time updates are working."
+      },
+      "verbose": {
+        "title": "Enable Verbose Logging",
+        "type": "boolean",
+        "default": false,
+        "description": "Log full device state payloads on every update (very noisy). Use only when diagnosing missing capabilities or wrong values. Implies debug."
+      },
+      "exposeComfortBreeze": {
+        "title": "Expose Comfort Breeze Switch",
+        "type": "boolean",
+        "default": false,
+        "description": "Show Comfort Breeze as a separate HomeKit switch tile for supported fans. When disabled (default), Comfort Breeze is hidden and the fan tile tap toggles power directly."
+      },
+      "exposeMasterPowerSwitch": {
+        "title": "Expose Master Power Switch",
+        "type": "boolean",
+        "default": false,
+        "description": "Show the ceiling-fan master power (power[primary]) as a separate HomeKit switch tile. Only applies to fans that have a dedicated fan-power field alongside a master power field."
+      },
+      "exposeStatusFault": {
+        "title": "Expose Status Fault on Fans and Lights",
+        "type": "boolean",
+        "default": false,
+        "description": "Show a fault indicator on fan and light tiles when a device goes offline. Non-standard per HAP spec — visible in third-party HomeKit apps (Eve, Controller for HomeKit); may not display in Apple Home."
+      },
+      "invertOutletStatus": {
+        "title": "Invert Outlet Status",
+        "type": "boolean",
+        "default": false,
+        "description": "Invert the reported on/off state for outlets and plugs. Enable if your outlet appears on in HomeKit when it is physically off."
+      },
+      "disableConclave": {
+        "title": "Disable Conclave Push",
+        "type": "boolean",
+        "default": false,
+        "description": "Disable the real-time Conclave push connection and fall back to polling only. Use this if you experience persistent connection issues."
       }
     },
     "required": ["username", "password"],
@@ -65,10 +101,15 @@
     },
     {
       "type": "fieldset",
+      "title": "Device Options",
+      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault", "invertOutletStatus"]
+    },
+    {
+      "type": "fieldset",
       "title": "Advanced",
       "expandable": true,
       "expanded": false,
-      "items": ["pollingInterval", "debug", "name", "tokenCachePath"]
+      "items": ["disableConclave", "pollingInterval", "debug", "verbose", "name", "tokenCachePath"]
     }
   ]
 }
