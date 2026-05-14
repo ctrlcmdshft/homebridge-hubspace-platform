@@ -93,8 +93,22 @@ Minimal `config.json` entry under `"platforms"`:
 | `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
-| `pollingInterval` | integer | `30` | Seconds between state polls (10–600) |
-| `debug` | boolean | `false` | Log verbose API details |
+| `pollingInterval` | integer | `30` | Seconds between state polls (10–600). When Conclave is active this is used as a slow-poll fallback with a minimum of 300 s. |
+| `debug` | boolean | `false` | Log additional API details |
+| `verbose` | boolean | `false` | Log full device state payloads on every poll/push — useful for bug reports and API exploration |
+| `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
+| `exposeComfortBreeze` | boolean | `false` | Add a separate "Comfort Breeze" Switch tile for ceiling fans that support it |
+| `exposeMasterPowerSwitch` | boolean | `false` | Add a separate Switch tile for the ceiling-fan master power relay (only appears on fans where the master relay is distinct from the fan control) |
+| `exposeStatusFault` | boolean | `false` | Show a StatusFault indicator on fan and light tiles when the device is reported offline by the Hubspace cloud (outlets always show StatusFault) |
+| `invertOutletStatus` | boolean | `false` | Invert the reported on/off state for smart plugs that report their status backwards |
+
+---
+
+## Real-time push (Conclave)
+
+Starting in 1.2.0 the plugin connects to the Afero Conclave push service alongside regular polling. When another app (or the Hubspace app itself) changes a device, the plugin receives an `attr_change` event within a second and fetches only that device's state — without waiting for the next poll cycle. The slow-poll fallback still runs at your configured `pollingInterval` (minimum 300 s when Conclave is active) as a safety net.
+
+No configuration is required — Conclave is on by default. Set `"disableConclave": true` to fall back to polling-only mode.
 
 ---
 

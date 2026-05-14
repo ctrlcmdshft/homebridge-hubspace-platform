@@ -23,11 +23,15 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   public readonly client: HubspaceClient;
   public readonly debug: boolean;
+  public readonly verbose: boolean;
   public readonly exposeStatusFault: boolean;
+  public readonly invertOutletStatus: boolean;
   private readonly configured: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailCycles = 0;
+  private conclaveActive = false;
+  private readonly pendingQuickPolls = new Set<string>();
   private readonly cfg: HubspaceConfig;
 
   constructor(
@@ -38,12 +42,14 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
     this.cfg = config as HubspaceConfig;
-    this.debug = this.cfg.debug ?? false;
+    this.debug = this.cfg.debug ?? this.cfg.verbose ?? false;
+    this.verbose = this.cfg.verbose ?? false;
     this.exposeStatusFault = this.cfg.exposeStatusFault ?? false;
+    this.invertOutletStatus = this.cfg.invertOutletStatus ?? false;
 
     if (!this.cfg.username || !this.cfg.password) {
       this.log.warn(
-        '[Hubspace] No credentials configured — open the plugin settings in the Homebridge UI ' +
+        'No credentials configured — open the plugin settings in the Homebridge UI ' +
         'and enter your Hubspace username and password, then restart Homebridge.',
       );
       this.configured = false;
@@ -60,14 +66,14 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       this.log,
       {
         tokenCachePath: this.cfg.tokenCachePath,
-        debug: this.cfg.debug,
+        debug: this.debug,
       },
     );
 
     this.api.on('didFinishLaunching', () => this.onReady());
     this.api.on('shutdown', () => this.onShutdown());
 
-    this.log.info('[Hubspace] Platform initialised — waiting for Homebridge launch.');
+    this.log.info('Platform initialised — waiting for Homebridge launch.');
   }
 
   // ─── Homebridge lifecycle ────────────────────────────────────────────────────
@@ -79,7 +85,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
    */
   configureAccessory(accessory: PlatformAccessory): void {
     this.log.debug(
-      `[Hubspace] Restoring cached accessory: ${accessory.displayName}`,
+      `Restoring cached accessory: ${accessory.displayName}`,
     );
     this.cachedAccessories.set(accessory.UUID, accessory);
   }
@@ -90,7 +96,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     const stale = [...this.cachedAccessories.values()];
     if (stale.length > 0) {
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, stale);
-      this.log.info(`[Hubspace] Removed ${stale.length} cached accessory(ies) — plugin is not configured.`);
+      this.log.info(`Removed ${stale.length} cached accessory(ies) — plugin is not configured.`);
     }
   }
 
@@ -98,11 +104,16 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     try {
       await this.client.initialize();
       await this.discoverDevices();
+      if (!this.cfg.disableConclave) {
+        this.conclaveActive = true;
+        this.client.startConclave((deviceId) => this.scheduleQuickPoll(deviceId, 0));
+        this.log.info('Conclave push connection started — slow-poll fallback every 300s.');
+      }
       this.startPolling();
     } catch (err) {
-      this.log.error('[Hubspace] Start-up failed:', String(err));
+      this.log.error('Start-up failed:', String(err));
       this.log.warn(
-        '[Hubspace] Falling back to cached accessories. ' +
+        'Falling back to cached accessories. ' +
         'Polling will not start until the API is reachable.',
       );
       // Re-attach handlers for any previously cached accessories so HomeKit
@@ -115,22 +126,22 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   private onShutdown(): void {
     this.stopPolling();
-    this.log.info('[Hubspace] Shut down cleanly.');
+    this.log.info('Shut down cleanly.');
   }
 
   // ─── Device discovery ─────────────────────────────────────────────────────────
 
   private async discoverDevices(): Promise<void> {
-    this.log.info('[Hubspace] Discovering devices…');
+    this.log.info('Discovering devices…');
     const devices = await this.client.getDevices();
-    this.log.info(`[Hubspace] Cloud returned ${devices.length} device(s).`);
+    this.log.info(`Cloud returned ${devices.length} device(s).`);
 
     const seenUUIDs = new Set<string>();
 
     for (const device of devices) {
       if (!SUPPORTED_DEVICE_CLASSES.has(device.deviceClass.toLowerCase())) {
         this.log.debug(
-          `[Hubspace] Skipping unsupported deviceClass "${device.deviceClass}" ` +
+          `Skipping unsupported deviceClass "${device.deviceClass}" ` +
           `(${device.friendlyName})`,
         );
         continue;
@@ -148,7 +159,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         const handler = createAccessory(this, existing, device);
         if (handler) {
           this.handlers.set(device.id, handler);
-          this.log.info(`[Hubspace] Restored: "${device.friendlyName}" (${device.deviceClass})`);
+          this.log.info(`Restored: "${device.friendlyName}" (${device.deviceClass})`);
           this.setupComfortBreezeCompanion(handler, device.id, seenUUIDs);
           this.setupMasterPowerCompanion(handler, device.id, seenUUIDs);
         }
@@ -164,7 +175,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         if (handler) {
           this.handlers.set(device.id, handler);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [pAccessory]);
-          this.log.info(`[Hubspace] Registered: "${device.friendlyName}" (${device.deviceClass})`);
+          this.log.info(`Registered: "${device.friendlyName}" (${device.deviceClass})`);
           this.setupComfortBreezeCompanion(handler, device.id, seenUUIDs);
           this.setupMasterPowerCompanion(handler, device.id, seenUUIDs);
         }
@@ -175,7 +186,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     for (const [uuid, pAccessory] of this.cachedAccessories) {
       if (!seenUUIDs.has(uuid)) {
         this.log.warn(
-          `[Hubspace] Removing stale accessory: "${pAccessory.displayName}"`,
+          `Removing stale accessory: "${pAccessory.displayName}"`,
         );
         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [pAccessory]);
         this.cachedAccessories.delete(uuid);
@@ -183,7 +194,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     }
 
     this.log.info(
-      `[Hubspace] Discovery complete — ${this.handlers.size} accessory(ies) active.`,
+      `Discovery complete — ${this.handlers.size} accessory(ies) active.`,
     );
   }
 
@@ -212,9 +223,11 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   // ─── Polling ──────────────────────────────────────────────────────────────────
 
   private startPolling(): void {
-    const intervalMs = (this.cfg.pollingInterval ?? 30) * 1000;
+    const defaultInterval = this.conclaveActive ? 300 : 30;
+    const intervalSecs = this.cfg.pollingInterval ?? defaultInterval;
+    const intervalMs = intervalSecs * 1000;
     this.log.info(
-      `[Hubspace] Starting state polling every ${intervalMs / 1000}s.`,
+      `Starting state polling every ${intervalSecs}s${this.conclaveActive ? ' (Conclave fallback)' : ''}.`,
     );
     this.pollTimer = setInterval(() => this.pollDevices(), intervalMs);
     // Run immediately on first start.
@@ -229,20 +242,23 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   }
 
   scheduleQuickPoll(deviceId: string, delayMs: number): void {
+    if (this.pendingQuickPolls.has(deviceId)) return;
+    this.pendingQuickPolls.add(deviceId);
     setTimeout(() => {
+      this.pendingQuickPolls.delete(deviceId);
       const handler = this.handlers.get(deviceId);
       if (!handler) return;
       const allIds = handler.device.allIds ?? [deviceId];
       this.client.getDeviceState(allIds)
         .then(values => handler.updateState(values))
-        .catch(err => this.log.warn(`[Hubspace] Quick-poll failed for ${deviceId}: ${err}`));
+        .catch(err => this.log.warn(`Quick-poll failed for ${deviceId}: ${err}`));
     }, delayMs);
   }
 
   private async pollDevices(): Promise<void> {
     if (this.handlers.size === 0) return;
 
-    this.log.debug(`[Hubspace] Polling ${this.handlers.size} device(s)…`);
+    this.log.debug(`Polling ${this.handlers.size} device(s)…`);
 
     const entries = [...this.handlers.entries()];
     const results = await Promise.allSettled(
@@ -259,20 +275,20 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         failCount++;
         if (this.consecutiveFailCycles < 3) {
           const [deviceId] = entries[i];
-          this.log.warn(`[Hubspace] Poll failed for ${deviceId}: ${r.reason}`);
+          this.log.warn(`Poll failed for ${deviceId}: ${r.reason}`);
         }
       }
     });
     if (failCount > 0) {
       this.consecutiveFailCycles++;
       if (this.consecutiveFailCycles === 3) {
-        this.log.warn(`[Hubspace] API appears unreachable — suppressing repeated poll errors. Will log again when recovered.`);
+        this.log.warn(`API appears unreachable — suppressing repeated poll errors. Will log again when recovered.`);
       } else if (this.consecutiveFailCycles < 3) {
-        this.log.warn(`[Hubspace] ${failCount} device(s) failed to poll this cycle.`);
+        this.log.warn(`${failCount} device(s) failed to poll this cycle.`);
       }
     } else {
       if (this.consecutiveFailCycles >= 3) {
-        this.log.info(`[Hubspace] API reachable again after ${this.consecutiveFailCycles} failed cycles.`);
+        this.log.info(`API reachable again after ${this.consecutiveFailCycles} failed cycles.`);
       }
       this.consecutiveFailCycles = 0;
     }
@@ -294,13 +310,13 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     const existing = this.cachedAccessories.get(mpUUID);
     if (existing) {
       handler.setupMasterPowerCompanion(existing);
-      this.log.info(`[Hubspace] Restored Master Power companion for "${handler.device.friendlyName}"`);
+      this.log.info(`Restored Master Power companion for "${handler.device.friendlyName}"`);
     } else {
       const mpAcc = new this.api.platformAccessory('Master Power', mpUUID);
       mpAcc.context = { deviceId, deviceClass: 'master-power', typeId: '', friendlyName: 'Master Power', companionFor: deviceId };
       handler.setupMasterPowerCompanion(mpAcc);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [mpAcc]);
-      this.log.info(`[Hubspace] Registered Master Power companion for "${handler.device.friendlyName}"`);
+      this.log.info(`Registered Master Power companion for "${handler.device.friendlyName}"`);
     }
   }
 
@@ -318,13 +334,13 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     const existing = this.cachedAccessories.get(cbUUID);
     if (existing) {
       handler.setupComfortBreezeCompanion(existing);
-      this.log.info(`[Hubspace] Restored Comfort Breeze companion for "${handler.device.friendlyName}"`);
+      this.log.info(`Restored Comfort Breeze companion for "${handler.device.friendlyName}"`);
     } else {
       const cbAcc = new this.api.platformAccessory('Comfort Breeze', cbUUID);
       cbAcc.context = { deviceId, deviceClass: 'comfort-breeze', typeId: '', friendlyName: 'Comfort Breeze', companionFor: deviceId };
       handler.setupComfortBreezeCompanion(cbAcc);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [cbAcc]);
-      this.log.info(`[Hubspace] Registered Comfort Breeze companion for "${handler.device.friendlyName}"`);
+      this.log.info(`Registered Comfort Breeze companion for "${handler.device.friendlyName}"`);
     }
   }
 
