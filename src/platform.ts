@@ -224,8 +224,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   private startPolling(): void {
     const defaultInterval = this.conclaveActive ? 300 : 30;
-    const configured = this.cfg.pollingInterval ?? defaultInterval;
-    const intervalSecs = this.conclaveActive ? Math.max(configured, 300) : configured;
+    const intervalSecs = this.cfg.pollingInterval ?? defaultInterval;
     const intervalMs = intervalSecs * 1000;
     this.log.info(
       `Starting state polling every ${intervalSecs}s${this.conclaveActive ? ' (Conclave fallback)' : ''}.`,
