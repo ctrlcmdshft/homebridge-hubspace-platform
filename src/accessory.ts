@@ -170,13 +170,13 @@ export class LightAccessory extends BaseHubspaceAccessory {
     // Power (always present).
     this.svc.getCharacteristic(this.platform.Characteristic.On)
       .onGet(() => this.getPower())
-      .onSet(async (v) => this.setPower(v as boolean));
+      .onSet((v) => { void this.setPower(v as boolean); });
 
     // Brightness.
     if (this.findValue(FC.BRIGHTNESS)) {
       this.svc.getCharacteristic(this.platform.Characteristic.Brightness)
         .onGet(() => this.getBrightness())
-        .onSet(async (v) => this.setBrightness(v as number));
+        .onSet((v) => { void this.setBrightness(v as number); });
     }
 
     // Color temperature.
@@ -185,18 +185,18 @@ export class LightAccessory extends BaseHubspaceAccessory {
       this.svc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
         .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
         .onGet(() => this.getColorTemp())
-        .onSet(async (v) => this.setColorTemp(v as number));
+        .onSet((v) => { void this.setColorTemp(v as number); });
     }
 
     // RGB color (Hue + Saturation).
     if (this.findValue(FC.COLOR_RGB)) {
       this.svc.getCharacteristic(this.platform.Characteristic.Hue)
         .onGet(() => this.getHue())
-        .onSet(async (v) => this.setPendingHue(v as number));
+        .onSet((v) => { void this.setPendingHue(v as number); });
 
       this.svc.getCharacteristic(this.platform.Characteristic.Saturation)
         .onGet(() => this.getSaturation())
-        .onSet(async (v) => this.setPendingSat(v as number));
+        .onSet((v) => { void this.setPendingSat(v as number); });
     }
 
     // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
@@ -348,7 +348,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     const fanPower = this.findFanPowerValue();
     this.fanSvc.getCharacteristic(this.platform.Characteristic.Active)
       .onGet(() => this.getFanActive())
-      .onSet(async (v) => this.setFanActive(v as number, fanPower?.functionInstance));
+      .onSet((v) => { void this.setFanActive(v as number, fanPower?.functionInstance); });
 
 
     // Rotation speed — 0 = off, 25/50/75/100 = speed steps.
@@ -357,7 +357,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
         .updateValue(this.getFanSpeed())
         .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
         .onGet(() => this.getFanSpeed())
-        .onSet(async (v) => this.setFanSpeed(v as number));
+        .onSet((v) => { void this.setFanSpeed(v as number); });
     }
 
 
@@ -381,12 +381,12 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
       this.lightSvc.getCharacteristic(this.platform.Characteristic.On)
         .onGet(() => this.getLightPower())
-        .onSet(async (v) => this.setLightPower(v as boolean));
+        .onSet((v) => { void this.setLightPower(v as boolean); });
 
       if (hasBrightness) {
         this.lightSvc.getCharacteristic(this.platform.Characteristic.Brightness)
           .onGet(() => this.getLightBrightness())
-          .onSet(async (v) => this.setLightBrightness(v as number));
+          .onSet((v) => { void this.setLightBrightness(v as number); });
       }
     }
 
@@ -455,7 +455,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
       pAcc.addService(this.platform.Service.Switch, 'Master Power');
     svc.getCharacteristic(this.platform.Characteristic.On)
       .onGet(() => this.getMasterPower())
-      .onSet(async (v) => this.setMasterPower(v as boolean));
+      .onSet((v) => { void this.setMasterPower(v as boolean); });
   }
 
   private getMasterPower(): CharacteristicValue {
@@ -480,7 +480,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
       pAcc.addService(this.platform.Service.Switch, 'Comfort Breeze');
     svc.getCharacteristic(this.platform.Characteristic.On)
       .onGet(() => this.getComfortBreeze())
-      .onSet(async (v) => this.setComfortBreeze(v as boolean));
+      .onSet((v) => { void this.setComfortBreeze(v as boolean); });
   }
 
   // ── Comfort Breeze getters / setters ─────────────────────────────────────────
@@ -588,7 +588,7 @@ export class OutletAccessory extends BaseHubspaceAccessory {
 
     this.svc.getCharacteristic(this.platform.Characteristic.On)
       .onGet(() => this.getPower())
-      .onSet(async (v) => this.setPower(v as boolean));
+      .onSet((v) => { void this.setPower(v as boolean); });
 
     // OutletInUse and StatusFault are optional on the Outlet service (not Switch).
     if (useOutletService) {
