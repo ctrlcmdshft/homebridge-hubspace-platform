@@ -140,7 +140,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
     for (const device of devices) {
       if (!SUPPORTED_DEVICE_CLASSES.has(device.deviceClass.toLowerCase())) {
-        this.log.debug(
+        this.log.warn(
           `Skipping unsupported deviceClass "${device.deviceClass}" ` +
           `(${device.friendlyName})`,
         );

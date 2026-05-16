@@ -56,7 +56,7 @@ export interface KeycloakTokenResponse {
 export interface DeviceStateValue {
   functionClass: string;
   functionInstance: string | undefined;
-  value: string | number | boolean;
+  value: string | number | boolean | Record<string, unknown>;
   lastUpdateTime?: number;
 }
 
@@ -117,6 +117,7 @@ export const SUPPORTED_DEVICE_CLASSES = new Set([
   'outlet',
   'switch',
   'plug',
+  'power-outlet',
 ]);
 
 // ─── Function class constants (Hubspace / Afero capability names) ─────────────

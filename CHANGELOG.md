@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.2.1] - 2026-05-16
+
+### Features
+
+- **power-outlet device support** — Hubspace plugs reporting `deviceClass: "power-outlet"` are now recognised and exposed as HomeKit Outlet tiles; on/off confirmed working with real hardware
+
+### Bug Fixes
+
+- **color-rgb (LED strips)** — Hubspace returns `color-rgb` state as a nested object `{"color-rgb":{"r":N,"g":N,"b":N}}`, not a hex string; reads and writes both now use the object format, eliminating the repeated Saturation characteristic warning on every poll cycle; confirmed working on a real LED tape light
+- **Immediate HomeKit response** — all `onSet` handlers are now fire-and-forget; HomeKit acknowledges commands instantly via optimistic update instead of waiting for the full API round-trip; a quick poll reverts state if the API call fails
+- **Color temperature debounce** — `setColorTemp` had no debounce, causing up to 12 API writes in 3 seconds while dragging the slider; now debounced at 300 ms matching the brightness pattern
+- **color-rgb debounce** — increased from 50 ms to 150 ms to prevent duplicate writes when hue and saturation updates arrive together from HomeKit
+- **Unsupported device logging** — devices with an unrecognised `deviceClass` are now logged at `warn` level so they always appear in the Homebridge log; previously logged at `debug` which required Homebridge global debug mode to see
+
+### Hardware Verified This Release
+
+- **LED tape light** (`light` / `color-rgb`) — color, brightness, and on/off all confirmed working
+- **Hubspace plug** (`power-outlet`) — on/off confirmed working
+
+---
+
 ## [1.2.0] - 2026-05-14
 
 ### Features
