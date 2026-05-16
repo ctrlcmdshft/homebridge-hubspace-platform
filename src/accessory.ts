@@ -258,16 +258,20 @@ export class LightAccessory extends BaseHubspaceAccessory {
     }, 300);
   }
 
+  private colorTempTimer: ReturnType<typeof setTimeout> | null = null;
+
   private async setColorTemp(mireds: number): Promise<void> {
-    const k = miredToKelvin(mireds);
-    const patches: Partial<DeviceStateValue>[] = [
-      this.buildPatch(FC.COLOR_TEMP, k.toString()),
-    ];
-    // Switch to white mode if device supports color-mode.
-    if (this.findValue(FC.COLOR_MODE)) {
-      patches.push(this.buildPatch(FC.COLOR_MODE, 'white'));
-    }
-    await this.setDeviceValues(patches);
+    if (this.colorTempTimer) clearTimeout(this.colorTempTimer);
+    this.colorTempTimer = setTimeout(async () => {
+      const k = miredToKelvin(mireds);
+      const patches: Partial<DeviceStateValue>[] = [
+        this.buildPatch(FC.COLOR_TEMP, k.toString()),
+      ];
+      if (this.findValue(FC.COLOR_MODE)) {
+        patches.push(this.buildPatch(FC.COLOR_MODE, 'white'));
+      }
+      await this.setDeviceValues(patches);
+    }, 300);
   }
 
   private async setPendingHue(h: number): Promise<void> {
@@ -300,7 +304,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
       await this.setDeviceValues(patches);
       this.pendingHue = null;
       this.pendingSat = null;
-    }, 50);
+    }, 150);
   }
 
   // ── Push ──────────────────────────────────────────────────────────────────────
