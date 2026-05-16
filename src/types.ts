@@ -56,7 +56,7 @@ export interface KeycloakTokenResponse {
 export interface DeviceStateValue {
   functionClass: string;
   functionInstance: string | undefined;
-  value: string | number | boolean;
+  value: string | number | boolean | Record<string, unknown>;
   lastUpdateTime?: number;
 }
 

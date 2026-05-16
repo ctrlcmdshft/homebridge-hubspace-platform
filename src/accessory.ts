@@ -10,8 +10,7 @@ import { HubspaceDevice, DeviceStateValue, FC, HubspaceAccessoryContext } from '
 import {
   hsvToRgb,
   rgbToHsv,
-  hexToRgb,
-  rgbToHex,
+  parseColorRgb,
   kelvinToMired,
   miredToKelvin,
   hubspeedToPercent,
@@ -83,7 +82,7 @@ export abstract class BaseHubspaceAccessory {
     if (this.platform.verbose) {
       this.log.info(
         `State for "${this.device.friendlyName}": ` +
-        values.map(v => `${v.functionClass}[${v.functionInstance}]=${v.value}`).join(', '),
+        values.map(v => `${v.functionClass}[${v.functionInstance}]=${typeof v.value === 'object' ? JSON.stringify(v.value) : v.value}`).join(', '),
       );
     }
     this.pushCharacteristics();
@@ -143,7 +142,7 @@ export abstract class BaseHubspaceAccessory {
   /** Build a minimal state patch using the existing functionInstance. */
   protected buildPatch(
     functionClass: string,
-    value: string | number,
+    value: DeviceStateValue['value'],
     functionInstance?: string,
   ): Partial<DeviceStateValue> {
     const existing = this.findValue(functionClass, functionInstance);
@@ -228,15 +227,13 @@ export class LightAccessory extends BaseHubspaceAccessory {
   private getHue(): CharacteristicValue {
     const v = this.findValue(FC.COLOR_RGB);
     if (!v) return 0;
-    const [r, g, b] = hexToRgb(String(v.value));
-    return rgbToHsv(r, g, b)[0];
+    return rgbToHsv(...parseColorRgb(v.value))[0];
   }
 
   private getSaturation(): CharacteristicValue {
     const v = this.findValue(FC.COLOR_RGB);
     if (!v) return 0;
-    const [r, g, b] = hexToRgb(String(v.value));
-    return rgbToHsv(r, g, b)[1];
+    return rgbToHsv(...parseColorRgb(v.value))[1];
   }
 
   // ── Setters ───────────────────────────────────────────────────────────────────
@@ -293,11 +290,10 @@ export class LightAccessory extends BaseHubspaceAccessory {
       const s = this.pendingSat ?? this.getSaturation() as number;
       const brightness = this.getBrightness() as number;
       const [r, g, b] = hsvToRgb(h, s, brightness);
-      const hex = rgbToHex(r, g, b);
 
-      const patches: Partial<DeviceStateValue>[] = [
-        this.buildPatch(FC.COLOR_RGB, hex),
-      ];
+      const rgbPatch = this.buildPatch(FC.COLOR_RGB, '');
+      rgbPatch.value = { 'color-rgb': { r, g, b } };
+      const patches: Partial<DeviceStateValue>[] = [rgbPatch];
       if (this.findValue(FC.COLOR_MODE)) {
         patches.push(this.buildPatch(FC.COLOR_MODE, 'color'));
       }

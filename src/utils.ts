@@ -48,6 +48,24 @@ export function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+/**
+ * Parse a color-rgb API value into [r, g, b] each 0–255.
+ * The Hubspace API returns objects of the form {"color-rgb":{"r":N,"g":N,"b":N}};
+ * older devices may return a plain hex string.
+ */
+export function parseColorRgb(value: unknown): [number, number, number] {
+  if (typeof value === 'string') return hexToRgb(value);
+  if (value !== null && typeof value === 'object') {
+    const inner = (value as Record<string, unknown>)['color-rgb'];
+    const obj = (inner !== undefined && typeof inner === 'object' ? inner : value) as Record<string, unknown>;
+    const r = Number(obj['r'] ?? 0);
+    const g = Number(obj['g'] ?? 0);
+    const b = Number(obj['b'] ?? 0);
+    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return [r, g, b];
+  }
+  return [0, 0, 0];
+}
+
 /** [r, g, b] each 0–255 → lowercase hex string (no #). */
 export function rgbToHex(r: number, g: number, b: number): string {
   return [r, g, b]
