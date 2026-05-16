@@ -117,6 +117,7 @@ export const SUPPORTED_DEVICE_CLASSES = new Set([
   'outlet',
   'switch',
   'plug',
+  'power-outlet',
 ]);
 
 // ─── Function class constants (Hubspace / Afero capability names) ─────────────

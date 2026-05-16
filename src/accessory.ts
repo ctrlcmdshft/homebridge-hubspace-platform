@@ -578,7 +578,7 @@ export class OutletAccessory extends BaseHubspaceAccessory {
   declare private svc: Service;
 
   protected setupServices(): void {
-    const useOutletService = ['outlet', 'plug'].includes(
+    const useOutletService = ['outlet', 'plug', 'power-outlet'].includes(
       this.device.deviceClass.toLowerCase(),
     );
 
@@ -647,7 +647,7 @@ export function createAccessory(
     return new FanAccessory(platform, pAccessory, device);
   }
 
-  if (cls === 'outlet' || cls === 'switch' || cls === 'plug') {
+  if (cls === 'outlet' || cls === 'switch' || cls === 'plug' || cls === 'power-outlet') {
     return new OutletAccessory(platform, pAccessory, device);
   }
 
