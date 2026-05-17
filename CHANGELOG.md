@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Improvements
+
+- **Unsupported device diagnostics** — when a device is skipped due to an unrecognised `deviceClass`, the warning now includes the hardware model, full capability list, and a direct link to open a GitHub issue; with `"debug": true` the raw state values are also logged so the exact API field formats are visible without needing a separate script
+- **New "Requesting support for a new device" section in README** — step-by-step guide for community members: enable `verbose`, capture the warning + state dump, open an issue with the right info
+- **Config table clarifications** — `debug` and `verbose` descriptions now explain exactly what each logs and when to use each; `verbose` entry links directly to the new guide
+- **Homebridge 2.0 release** — updated `engines` and `devDependencies` from `^2.0.0-beta.0` to `^2.0.0` now that Homebridge 2.0 is generally available
+
+### Hardware Verified
+
+- **Hubspace Smart Light (non-color)** — on/off and brightness confirmed working on a Hubspace colour bulb operating in white mode
+
+---
+
 ## [1.2.1] - 2026-05-16
 
 ### Features

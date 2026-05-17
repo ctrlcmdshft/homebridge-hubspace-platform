@@ -12,8 +12,9 @@ export interface HubspaceConfig {
   pollingInterval?: number;
   /** Override path for the token cache JSON file. */
   tokenCachePath?: string;
+  /** Log API/network activity: GET STATE, SET STATE, token refresh, Conclave connection, unsupported device details. */
   debug?: boolean;
-  /** Log full device state payloads on every update (very noisy; implies debug). */
+  /** Log full device state on every poll cycle (very noisy). Implies debug. */
   verbose?: boolean;
   /** Expose Comfort Breeze as a separate HomeKit switch tile (default false). */
   exposeComfortBreeze?: boolean;

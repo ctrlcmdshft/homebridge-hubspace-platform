@@ -140,10 +140,21 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
     for (const device of devices) {
       if (!SUPPORTED_DEVICE_CLASSES.has(device.deviceClass.toLowerCase())) {
+        const caps = [...new Set(device.values.map(v => v.functionClass))].join(', ') || 'none';
+        const mfr = [device.manufacturerName, device.model].filter(Boolean).join(' / ') || 'unknown';
         this.log.warn(
-          `Skipping unsupported deviceClass "${device.deviceClass}" ` +
-          `(${device.friendlyName})`,
+          `Unsupported deviceClass "${device.deviceClass}" — "${device.friendlyName}" will not appear in HomeKit.\n` +
+          `  Hardware : ${mfr}\n` +
+          `  Capabilities: ${caps}\n` +
+          `  To request support: https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues`,
         );
+        if (this.debug) {
+          for (const v of device.values) {
+            this.log.info(
+              `  [debug] ${v.functionClass}[${v.functionInstance ?? 'undefined'}] = ${JSON.stringify(v.value)}`,
+            );
+          }
+        }
         continue;
       }
 
@@ -224,7 +235,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   private startPolling(): void {
     const defaultInterval = this.conclaveActive ? 300 : 30;
-    const intervalSecs = this.cfg.pollingInterval ?? defaultInterval;
+    const raw = this.cfg.pollingInterval ?? defaultInterval;
+    const intervalSecs = Math.min(600, Math.max(this.conclaveActive ? 300 : 10, raw));
     const intervalMs = intervalSecs * 1000;
     this.log.info(
       `Starting state polling every ${intervalSecs}s${this.conclaveActive ? ' (Conclave fallback)' : ''}.`,

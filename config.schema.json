@@ -42,7 +42,7 @@
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log Conclave push events, poll cycles, and token operations. Useful for verifying real-time updates are working."
+        "description": "Log API call activity: GET STATE, SET STATE, token refresh, Conclave connection details. Also dumps raw capabilities when an unsupported device is skipped."
       },
       "verbose": {
         "title": "Enable Verbose Logging",
