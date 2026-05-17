@@ -4,14 +4,26 @@
 
 ### Improvements
 
-- **Unsupported device diagnostics** — when a device is skipped due to an unrecognised `deviceClass`, the warning now includes the hardware model, full capability list, and a direct link to open a GitHub issue; with `"debug": true` the raw state values are also logged so the exact API field formats are visible without needing a separate script
-- **New "Requesting support for a new device" section in README** — step-by-step guide for community members: enable `verbose`, capture the warning + state dump, open an issue with the right info
-- **Config table clarifications** — `debug` and `verbose` descriptions now explain exactly what each logs and when to use each; `verbose` entry links directly to the new guide
-- **Homebridge 2.0 release** — updated `engines` and `devDependencies` from `^2.0.0-beta.0` to `^2.0.0` now that Homebridge 2.0 is generally available
+- **Unsupported device diagnostics** — when a device is skipped due to an unrecognised `deviceClass`, the warn log now includes the hardware model, full capability list, and a direct link to open a GitHub issue; with `"debug": true` the raw state values are also logged so exact API field formats are visible without running a separate script
+- **`pollingInterval` clamped in code** — values outside 10–600 s are now clamped at runtime regardless of how config.json was edited; when Conclave is active the floor is raised to 300 s to prevent hammering the API
+
+### Docs
+
+- **Requesting support for a new device** — new README section with a step-by-step guide: enable `verbose`, capture the `Unsupported deviceClass` warning and `State for "..."` dump, open a GitHub issue with the right info
+- **GitHub issue templates** — `device-support` and `bug-report` templates added under `.github/ISSUE_TEMPLATE/`; the device-support template pre-fills the exact fields needed to implement support
+- **CONTRIBUTING.md** — new file pointing contributors to the requesting-support guide, bug template, local dev setup, and PR expectations
+- **Development content moved to GitHub wiki** — local setup, API endpoints, authentication details, and `discover.mjs` are now at the [Development wiki page](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development); README links there instead
+- **README cleanup** — install section restructured into a single setup-by-environment table; `tokenCachePath` added to config options table; `exposeStatusFault` caveat added ("may not display in Apple Home"); `debug`/`verbose` descriptions rewritten with accurate detail; stale `10–600` range and "full API responses" wording corrected
+
+### Maintenance
+
+- **Homebridge 2.0** — `engines` and `devDependencies` updated from `^2.0.0-beta.0` to `^2.0.0` now that Homebridge 2.0 is generally available
+- **`config.schema.json`** — `debug` field description synced with README ("GET STATE, SET STATE, token refresh, Conclave details")
 
 ### Hardware Verified
 
-- **Hubspace Smart Light (non-color)** — on/off and brightness confirmed working on a Hubspace colour bulb operating in white mode
+- **Hubspace Smart Light (non-color)** — on/off and brightness confirmed working on a Hubspace colour bulb in white mode
+- **Hubspace Smart Light (color) / bulb** — `color-rgb` object format, `color-temperature`, and `color-mode` field names confirmed on a real colour bulb
 
 ---
 
