@@ -152,76 +152,13 @@ If your Hubspace device doesn't appear in HomeKit, the plugin has skipped it bec
 
 5. Remove `"verbose": true` once you've captured the logs — it logs every device every 30 seconds and is not intended for permanent use.
 
-> **Power users:** if you're comfortable running a script, `discover.mjs` (see [Exploring the API](#exploring-the-api)) dumps the complete raw API response for all your devices, which gives even more detail than the verbose log.
+> **Power users:** if you're comfortable running a script, `discover.mjs` (see the [Development wiki](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development)) dumps the complete raw API response for all your devices, which gives even more detail than the verbose log.
 
 ---
 
 ## Development
 
-There is no official documentation for the Hubspace consumer API. All functionality here was gained by experimenting with real devices and observing API responses.
-
-### Local setup
-
-```bash
-git clone https://github.com/ctrlcmdshft/homebridge-hubspace-platform.git
-cd homebridge-hubspace-platform
-npm install
-npm run build    # compile once
-npm run watch    # recompile on save
-```
-
-### Authentication
-
-Hubspace uses [Keycloak](https://www.keycloak.org) for auth. To obtain a token manually, `POST` to:
-
-```
-https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token
-```
-
-with `Content-Type: application/x-www-form-urlencoded` and the body:
-
-```
-grant_type=password
-client_id=hubspace_android
-username=<your email>
-password=<your password>
-scope=openid offline_access
-```
-
-### API endpoints
-
-**Authentication**
-```
-POST https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token
-```
-
-**Resolve account ID**
-```
-GET https://api2.afero.net/v1/users/me
-```
-
-**List all devices**
-```
-GET https://semantics2.afero.net/v1/accounts/{accountId}/metadevices?expansions=state
-```
-
-**Get device state**
-```
-GET https://semantics2.afero.net/v1/accounts/{accountId}/metadevices/{deviceId}?expansions=state
-```
-
-**Set device state**
-```
-PUT https://semantics2.afero.net/v1/accounts/{accountId}/metadevices/{deviceId}/state
-```
-
-### Exploring the API
-
-Copy `.env.example` to `.env`, fill in your credentials, then run the discovery script:
-
-```bash
-USERNAME=you@example.com PASSWORD=yourpass node discover.mjs
-```
+Local setup, API endpoint reference, authentication details, and the `discover.mjs` exploration script are documented in the [**Development wiki**](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development).
 
 ---
 

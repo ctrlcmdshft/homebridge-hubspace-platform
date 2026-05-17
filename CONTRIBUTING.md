@@ -23,7 +23,7 @@ npm run watch    # recompile on save
 npm test         # run tests
 ```
 
-See the [Development](README.md#development) section of the README for API endpoint details and the `discover.mjs` exploration script.
+See the [Development wiki](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development) for API endpoint details and the `discover.mjs` exploration script.
 
 ## Pull requests
 
