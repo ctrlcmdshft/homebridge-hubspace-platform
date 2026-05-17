@@ -28,10 +28,10 @@
       "pollingInterval": {
         "title": "Polling Interval (seconds)",
         "type": "integer",
-        "default": 30,
+        "default": 300,
         "minimum": 10,
         "maximum": 600,
-        "description": "Fallback poll interval in seconds. When Conclave push is active (default), this is floored at 300 s — real-time updates come via Conclave regardless. Only matters if Conclave is disabled."
+        "description": "How often to poll device state. When Conclave push is active (the default), real-time updates arrive instantly and this is only a fallback — values below 300 s are ignored. Set lower only if Conclave is disabled."
       },
       "tokenCachePath": {
         "title": "Token Cache Path (advanced)",

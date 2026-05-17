@@ -83,7 +83,7 @@ Minimal `config.json` entry under `"platforms"`:
 | `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
-| `pollingInterval` | integer | `30` | Seconds between state polls. When Conclave is active (the default) this becomes a slow-poll fallback and is floored at 300 s, so the effective default is 300 s in most setups. |
+| `pollingInterval` | integer | `300` | Fallback poll interval in seconds. When Conclave is active (the default), real-time updates arrive instantly and values below 300 s are ignored. Only relevant if Conclave is disabled. |
 | `debug` | boolean | `false` | Log API/network activity: GET STATE, SET STATE, token refresh, Conclave details. Also dumps raw capabilities when an unsupported device is skipped. See also `verbose`. |
 | `verbose` | boolean | `false` | Log full device state on every poll cycle (noisy). Implies `debug`. Use this when [requesting support for a new device](#requesting-support-for-a-new-device). |
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |

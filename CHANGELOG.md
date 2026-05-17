@@ -5,7 +5,8 @@
 ### Improvements
 
 - **Unsupported device diagnostics** — when a device is skipped due to an unrecognised `deviceClass`, the warn log now includes the hardware model, full capability list, and a direct link to open a GitHub issue; with `"debug": true` the raw state values are also logged so exact API field formats are visible without running a separate script
-- **`pollingInterval` clamped in code** — values outside 10–600 s are now clamped at runtime regardless of how config.json was edited; when Conclave is active the floor is raised to 300 s to prevent hammering the API
+- **`pollingInterval` clamped in code** — values outside 10–600 s are now clamped at runtime regardless of how config.json was edited; when Conclave is active the floor is raised to 300 s to prevent unnecessary polling
+- **`pollingInterval` default changed from 30 to 300** — the UI slider now starts at 300 s to match the effective default when Conclave is active; users who had it set to 30 will see it clamped to 300 s automatically
 
 ### Docs
 
