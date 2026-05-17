@@ -41,11 +41,14 @@ export abstract class BaseHubspaceAccessory {
     const info = this.accessory.getService(this.platform.Service.AccessoryInformation)
       ?? this.accessory.addService(this.platform.Service.AccessoryInformation);
 
+    const safeName = (s: string | undefined, fallback: string): string =>
+      (s?.trim().length ?? 0) > 1 ? s!.trim() : fallback;
+
     info
       .setCharacteristic(this.platform.Characteristic.Manufacturer,
-        this.device.manufacturerName ?? 'Hubspace')
+        safeName(this.device.manufacturerName, 'Hubspace'))
       .setCharacteristic(this.platform.Characteristic.Model,
-        this.device.model ?? this.device.typeId)
+        safeName(this.device.model, this.device.typeId))
       .setCharacteristic(this.platform.Characteristic.SerialNumber,
         this.device.id)
       .setCharacteristic(this.platform.Characteristic.Name,
