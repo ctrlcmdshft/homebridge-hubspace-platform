@@ -3,7 +3,9 @@ import {
   Service,
   CharacteristicValue,
   Logger,
+  HAPStatus,
 } from 'homebridge';
+import { HapStatusError } from '@homebridge/hap-nodejs';
 import { isAxiosError } from 'axios';
 import type { HubspacePlatform } from './platform';
 import { HubspaceDevice, DeviceStateValue, FC, HubspaceAccessoryContext } from './types';
@@ -93,6 +95,14 @@ export abstract class BaseHubspaceAccessory {
 
   // ── Fault status ──────────────────────────────────────────────────────────────
 
+  /** Throws SERVICE_COMMUNICATION_FAILURE if the device is offline — triggers "No Response" in HomeKit. */
+  protected requireAvailable(): void {
+    const v = this.findValue(FC.AVAILABLE);
+    if (v !== undefined && v.value !== true && v.value !== 'true' && v.value !== 1) {
+      throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+  }
+
   protected getStatusFault(): CharacteristicValue {
     const v = this.findValue(FC.AVAILABLE);
     if (v === undefined) return this.platform.Characteristic.StatusFault.NO_FAULT;
@@ -172,13 +182,13 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
     // Power (always present).
     this.svc.getCharacteristic(this.platform.Characteristic.On)
-      .onGet(() => this.getPower())
+      .onGet(() => { this.requireAvailable(); return this.getPower(); })
       .onSet((v) => { void this.setPower(v as boolean); });
 
     // Brightness.
     if (this.findValue(FC.BRIGHTNESS)) {
       this.svc.getCharacteristic(this.platform.Characteristic.Brightness)
-        .onGet(() => this.getBrightness())
+        .onGet(() => { this.requireAvailable(); return this.getBrightness(); })
         .onSet((v) => { void this.setBrightness(v as number); });
     }
 
@@ -187,18 +197,18 @@ export class LightAccessory extends BaseHubspaceAccessory {
       const minK = 2700, maxK = 6500;
       this.svc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
         .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
-        .onGet(() => this.getColorTemp())
+        .onGet(() => { this.requireAvailable(); return this.getColorTemp(); })
         .onSet((v) => { void this.setColorTemp(v as number); });
     }
 
     // RGB color (Hue + Saturation).
     if (this.findValue(FC.COLOR_RGB)) {
       this.svc.getCharacteristic(this.platform.Characteristic.Hue)
-        .onGet(() => this.getHue())
+        .onGet(() => { this.requireAvailable(); return this.getHue(); })
         .onSet((v) => { void this.setPendingHue(v as number); });
 
       this.svc.getCharacteristic(this.platform.Characteristic.Saturation)
-        .onGet(() => this.getSaturation())
+        .onGet(() => { this.requireAvailable(); return this.getSaturation(); })
         .onSet((v) => { void this.setPendingSat(v as number); });
     }
 
@@ -354,7 +364,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     // Active (fan power — use functionInstance that is NOT "light-power").
     const fanPower = this.findFanPowerValue();
     this.fanSvc.getCharacteristic(this.platform.Characteristic.Active)
-      .onGet(() => this.getFanActive())
+      .onGet(() => { this.requireAvailable(); return this.getFanActive(); })
       .onSet((v) => { void this.setFanActive(v as number, fanPower?.functionInstance); });
 
 
@@ -363,7 +373,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .updateValue(this.getFanSpeed())
         .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
-        .onGet(() => this.getFanSpeed())
+        .onGet(() => { this.requireAvailable(); return this.getFanSpeed(); })
         .onSet((v) => { void this.setFanSpeed(v as number); });
     }
 
@@ -387,12 +397,12 @@ export class FanAccessory extends BaseHubspaceAccessory {
         );
 
       this.lightSvc.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(() => this.getLightPower())
+        .onGet(() => { this.requireAvailable(); return this.getLightPower(); })
         .onSet((v) => { void this.setLightPower(v as boolean); });
 
       if (hasBrightness) {
         this.lightSvc.getCharacteristic(this.platform.Characteristic.Brightness)
-          .onGet(() => this.getLightBrightness())
+          .onGet(() => { this.requireAvailable(); return this.getLightBrightness(); })
           .onSet((v) => { void this.setLightBrightness(v as number); });
       }
     }
@@ -594,13 +604,13 @@ export class OutletAccessory extends BaseHubspaceAccessory {
       this.accessory.addService(ServiceType, this.device.friendlyName);
 
     this.svc.getCharacteristic(this.platform.Characteristic.On)
-      .onGet(() => this.getPower())
+      .onGet(() => { this.requireAvailable(); return this.getPower(); })
       .onSet((v) => { void this.setPower(v as boolean); });
 
     // OutletInUse is optional on the Outlet service (not Switch).
     if (useOutletService) {
       this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
-        .onGet(() => this.getPower());
+        .onGet(() => { this.requireAvailable(); return this.getPower(); });
     }
   }
 
@@ -648,11 +658,11 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
         this.accessory.addService(this.platform.Service.Outlet, label, instance);
 
       svc.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(() => this.getPowerForOutlet(instance))
+        .onGet(() => { this.requireAvailable(); return this.getPowerForOutlet(instance); })
         .onSet((v) => { void this.setPowerForOutlet(instance, v as boolean); });
 
       svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
-        .onGet(() => this.getPowerForOutlet(instance));
+        .onGet(() => { this.requireAvailable(); return this.getPowerForOutlet(instance); });
 
       this.outletServices.set(instance, svc);
     }
