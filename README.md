@@ -29,15 +29,17 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 | Device | Features | Status |
 | --- | --- | --- |
-| Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · light on/off · brightness | Tested with hardware |
-| Defiant Smart Plug / Hubspace power-outlet | On/off | Tested with hardware |
+| Hampton Bay Universal Smart Fan Controller (76278) | Fan on/off · 4 speeds · light on/off · brightness · Comfort Breeze | Tested with hardware |
+| Defiant Smart Indoor Plug (HPPA11AWB) | On/off | Tested with hardware |
 | Commercial Electric Smart Surge Protector (LA-12A-C) | 4 smart outlets (of 6 total) independently controlled | Tested with hardware |
 | Defiant Smart Wi-Fi Outdoor Plug (HPPA52CWB) | 2 independently controlled outlets | Tested with hardware |
 | Hubspace Smart Switch | On/off | Implemented, untested |
-| Hubspace Smart Light | On/off · brightness | Tested with hardware |
-| Hubspace Smart Light (color) / LED strip | On/off · brightness · color temperature · RGB color | Tested with hardware |
+| EcoSmart Smart RGBWIC LED Strip Light (AL-HSTL-RGBICTW) | On/off · brightness · color temperature · RGB color | Tested with hardware |
+| EcoSmart Smart A19 Color Bulb (12A19060WRGBWH1) | On/off · brightness · color temperature · RGB color | Tested with hardware |
 
 > **Note:** Smart switches are implemented based on the Afero API but have not yet been verified with real hardware. If you own one and can confirm it works (or find a bug), please open an issue.
+>
+> **Hubspace light bulbs:** All EcoSmart/Hubspace A19 bulbs (color changing and tunable white variants) should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only. The plugin detects capabilities automatically.
 
 ---
 
