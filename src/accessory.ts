@@ -597,12 +597,10 @@ export class OutletAccessory extends BaseHubspaceAccessory {
       .onGet(() => this.getPower())
       .onSet((v) => { void this.setPower(v as boolean); });
 
-    // OutletInUse and StatusFault are optional on the Outlet service (not Switch).
+    // OutletInUse is optional on the Outlet service (not Switch).
     if (useOutletService) {
       this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
         .onGet(() => this.getPower());
-      this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
-        .onGet(() => this.getStatusFault());
     }
   }
 
@@ -621,10 +619,58 @@ export class OutletAccessory extends BaseHubspaceAccessory {
   protected pushCharacteristics(): void {
     this.svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower());
     if (this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)) {
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.OutletInUse, this.getPower());
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.StatusFault, this.getStatusFault());
+      this.svc.updateCharacteristic(this.platform.Characteristic.OutletInUse, this.getPower());
+    }
+  }
+}
+
+// ─── Multi-outlet accessory (e.g. surge wall tap, power strip) ────────────────
+
+export class MultiOutletAccessory extends BaseHubspaceAccessory {
+  declare private outletServices: Map<string, Service>;
+
+  private get outletInstances(): string[] {
+    const instances: string[] = [];
+    for (const [, v] of this.stateMap) {
+      if (v.functionClass === FC.TOGGLE && /^outlet-\d+$/.test(v.functionInstance ?? '')) {
+        instances.push(v.functionInstance!);
+      }
+    }
+    return instances.sort();
+  }
+
+  protected setupServices(): void {
+    this.outletServices = new Map();
+    for (const instance of this.outletInstances) {
+      const label = instance.replace(/^outlet-(\d+)$/, 'Outlet $1');
+      const svc =
+        this.accessory.services.find(s => s.subtype === instance) ??
+        this.accessory.addService(this.platform.Service.Outlet, label, instance);
+
+      svc.getCharacteristic(this.platform.Characteristic.On)
+        .onGet(() => this.getPowerForOutlet(instance))
+        .onSet((v) => { void this.setPowerForOutlet(instance, v as boolean); });
+
+      svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
+        .onGet(() => this.getPowerForOutlet(instance));
+
+      this.outletServices.set(instance, svc);
+    }
+  }
+
+  private getPowerForOutlet(instance: string): CharacteristicValue {
+    const v = this.findValue(FC.TOGGLE, instance);
+    return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
+  }
+
+  private async setPowerForOutlet(instance: string, on: boolean): Promise<void> {
+    await this.setDeviceValues([this.buildPatch(FC.TOGGLE, on ? 'on' : 'off', instance)]);
+  }
+
+  protected pushCharacteristics(): void {
+    for (const [instance, svc] of this.outletServices) {
+      svc.updateCharacteristic(this.platform.Characteristic.On, this.getPowerForOutlet(instance));
+      svc.updateCharacteristic(this.platform.Characteristic.OutletInUse, this.getPowerForOutlet(instance));
     }
   }
 }
@@ -651,6 +697,12 @@ export function createAccessory(
   }
 
   if (cls === 'outlet' || cls === 'switch' || cls === 'plug' || cls === 'power-outlet') {
+    const multiOutlets = device.values.filter(
+      v => v.functionClass === FC.TOGGLE && /^outlet-\d+$/.test(v.functionInstance ?? ''),
+    );
+    if (multiOutlets.length > 1) {
+      return new MultiOutletAccessory(platform, pAccessory, device);
+    }
     return new OutletAccessory(platform, pAccessory, device);
   }
 

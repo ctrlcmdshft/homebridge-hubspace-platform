@@ -31,6 +31,8 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 | --- | --- | --- |
 | Hampton Bay Ceiling Fan (Hubspace) | Fan on/off · 4 speeds · light on/off · brightness | Tested with hardware |
 | Defiant Smart Plug / Hubspace power-outlet | On/off | Tested with hardware |
+| Commercial Electric Smart Surge Protector (LA-12A-C) | 4 smart outlets (of 6 total) independently controlled | Tested with hardware |
+| Defiant Smart Wi-Fi Outdoor Plug (HPPA52CWB) | 2 independently controlled outlets | Tested with hardware |
 | Hubspace Smart Switch | On/off | Implemented, untested |
 | Hubspace Smart Light | On/off · brightness | Tested with hardware |
 | Hubspace Smart Light (color) / LED strip | On/off · brightness · color temperature · RGB color | Tested with hardware |
@@ -44,7 +46,7 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 - **Node.js** all active LTS releases (currently 22 and 24)
 - **Homebridge** ≥ 1.8.0 or 2.x
 - A Hubspace / Home Depot account with at least one paired device
-- **2FA must be disabled** — the Hubspace API client used by this plugin does not support interactive two-factor authentication. If your account has 2FA enabled via email code, authentication will fail. Native 2FA support is being investigated; follow the repo for updates.
+- **2FA supported** — accounts with email-code two-factor authentication are supported via the plugin's built-in login UI (open plugin settings in Homebridge UI to authenticate).
 
 ---
 
@@ -89,7 +91,7 @@ Minimal `config.json` entry under `"platforms"`:
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
 | `exposeComfortBreeze` | boolean | `false` | Add a separate "Comfort Breeze" Switch tile for ceiling fans that support it |
 | `exposeMasterPowerSwitch` | boolean | `false` | Add a separate Switch tile for the ceiling-fan master power relay (only appears on fans where the master relay is distinct from the fan control) |
-| `exposeStatusFault` | boolean | `false` | Show a StatusFault indicator on fan and light tiles when the device is reported offline by the Hubspace cloud (outlets always show StatusFault). Non-standard — visible in Eve and Controller for HomeKit; may not display in Apple Home. |
+| `exposeStatusFault` | boolean | `false` | Show a StatusFault indicator on fan and light tiles when the device is reported offline by the Hubspace cloud. Non-standard — visible in Eve and Controller for HomeKit; may not display in Apple Home. |
 | `invertOutletStatus` | boolean | `false` | Invert the reported on/off state for smart plugs that report their status backwards |
 | `tokenCachePath` | string | — | Override the path for the cached auth token file. Leave blank to use the Homebridge storage directory (recommended). |
 
