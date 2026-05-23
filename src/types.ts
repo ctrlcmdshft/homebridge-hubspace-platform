@@ -130,6 +130,7 @@ export const FC = {
   COLOR_RGB: 'color-rgb',
   COLOR_MODE: 'color-mode',
   FAN_SPEED: 'fan-speed',
+  FAN_REVERSE: 'fan-reverse',
   AVAILABLE: 'available',
 } as const;
 

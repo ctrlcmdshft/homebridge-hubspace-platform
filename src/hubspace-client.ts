@@ -91,11 +91,12 @@ export class HubspaceClient {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Connect to the Conclave push stream. Calls onDeviceChange(deviceId) whenever
-   * Conclave reports an attr_change or status_change. The connection is maintained
-   * internally with exponential-backoff reconnects.
+   * Connect to the Conclave push stream.  Calls onDeviceChange(deviceId) whenever
+   * Conclave reports an attr_change or status_change, and onClientJoin() whenever
+   * another Hubspace client (e.g. the mobile app) connects to the channel. The
+   * connection is maintained internally with exponential-backoff reconnects.
    */
-  startConclave(onDeviceChange: (deviceId: string) => void): void {
+  startConclave(onDeviceChange: (deviceId: string) => void, onClientJoin?: () => void): void {
     const accountId = this.accountId;
     if (!accountId) {
       this.log.warn('[Conclave] accountId not yet resolved — Conclave will not start.');
@@ -109,11 +110,12 @@ export class HubspaceClient {
       onDeviceChange,
       this.log,
       this.debug,
+      onClientJoin,
     );
     client.connect();
   }
 
-  async fetchConclaveToken(): Promise<{ token: string; expiresIn: number; host: string; compression: boolean }> {
+  async fetchConclaveToken(): Promise<{ token: string; channelId: string | undefined; expiresIn: number; host: string; compression: boolean }> {
     const accountId = await this.resolveAccountId();
     const accessToken = await this.getValidAccessToken();
     const res = await axios.post<Record<string, unknown>>(
@@ -133,11 +135,12 @@ export class HubspaceClient {
     const raw = res.data;
 
     // Response shape: { tokens: [{token, expiresTimestamp, createdTimestamp, ...}], conclave: {host, port, ssl, compression}, ... }
-    type TokenEntry = { token: string; expiresTimestamp?: number };
+    type TokenEntry = { token: string; expiresTimestamp?: number; channelId?: string };
     const tokensArr = raw['tokens'] as TokenEntry[] | undefined;
     const tokenEntry = tokensArr?.[0];
     const token = tokenEntry?.token ?? (raw['token'] as string | undefined);
     if (!token) throw new Error('No token in Conclave access response');
+    const channelId = tokenEntry?.channelId;
 
     // Expiry from timestamp (ms epoch) or fall back to scalar fields
     let expiresIn = 90;
@@ -151,11 +154,9 @@ export class HubspaceClient {
     const host = conclaveInfo?.host ?? CONCLAVE_HOST;
     const compression = conclaveInfo?.compression ?? false;
 
-    if (this.debug) {
-      this.log.info(`[Conclave] Server: ${host}, compression: ${compression}, token expires in ${expiresIn}s`);
-    }
+    this.log.info(`[Conclave] Server: ${host}, compression: ${compression}, channelId: ${channelId ?? '(none — using accountId)'}, token expires in ${expiresIn}s`);
 
-    return { token, expiresIn, host, compression };
+    return { token, channelId, expiresIn, host, compression };
   }
 
   private getOrCreateMobileDeviceId(): string {
@@ -360,15 +361,27 @@ export class HubspaceClient {
       );
       data = res.data;
     } catch (err) {
-      throw new Error(
-        `Authentication failed: ${this.extractErrorMessage(err)}`,
-      );
+      const msg = this.extractErrorMessage(err);
+      if (/mfa|otp|two.factor|multi.factor|email.*code|authenticat/i.test(msg)) {
+        this.log.warn(
+          `Authentication failed: ${msg}\n` +
+          'Your account has 2FA enabled. Open the plugin settings in the Homebridge UI to complete the login flow.',
+        );
+      } else {
+        this.log.warn(`Authentication failed: ${msg}`);
+      }
+      throw new Error(`Authentication failed: ${msg}`);
     }
 
     if (data.error) {
-      throw new Error(
-        `Auth error: ${data.error} — ${data.error_description ?? ''}`,
-      );
+      const msg = `${data.error} — ${data.error_description ?? ''}`;
+      if (/mfa|otp|two.factor|multi.factor|email.*code|authenticat/i.test(msg)) {
+        this.log.warn(
+          `Auth error: ${msg}\n` +
+          'Your account has 2FA enabled. Open the plugin settings in the Homebridge UI to complete the login flow.',
+        );
+      }
+      throw new Error(`Auth error: ${msg}`);
     }
 
     this.storeTokens(data);
@@ -379,6 +392,16 @@ export class HubspaceClient {
     );
   }
 
+  private tokenClientId(): string {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(this.tokens!.accessToken.split('.')[1], 'base64url').toString('utf8'),
+      );
+      if (typeof payload.azp === 'string' && payload.azp) return payload.azp;
+    } catch { /* fall through */ }
+    return CLIENT_ID;
+  }
+
   private async doRefresh(): Promise<void> {
     if (this.refreshInFlight) return this.refreshInFlight;
 
@@ -387,7 +410,7 @@ export class HubspaceClient {
       this.log.debug('Refreshing access token…');
       const params = new URLSearchParams({
         grant_type: 'refresh_token',
-        client_id: CLIENT_ID,
+        client_id: this.tokenClientId(),
         refresh_token: this.tokens.refreshToken,
       });
       try {
@@ -515,8 +538,17 @@ interface ConclaveHelloMessage {
   hello: { heartbeat: number; [key: string]: unknown };
 }
 
-interface ConclavePublicMessage {
-  public: {
+interface ConclaveEventMessage {
+  public?: {
+    event: string;
+    data: {
+      id?: string;
+      attribute?: unknown;
+      status?: unknown;
+      [key: string]: unknown;
+    };
+  };
+  private?: {
     event: string;
     data: {
       id?: string;
@@ -530,15 +562,15 @@ interface ConclavePublicMessage {
 type ConclaveEnvelope =
   | ConclaveHelloMessage
   | { welcome: unknown }
-  | ConclavePublicMessage
+  | ConclaveEventMessage
   | { error: unknown };
 
 function isHello(e: ConclaveEnvelope): e is ConclaveHelloMessage {
   return 'hello' in e;
 }
 
-function isPublic(e: ConclaveEnvelope): e is ConclavePublicMessage {
-  return 'public' in e;
+function isDeviceEvent(e: ConclaveEnvelope): e is ConclaveEventMessage {
+  return 'public' in e || 'private' in e;
 }
 
 class ConclaveClient extends EventEmitter {
@@ -551,14 +583,17 @@ class ConclaveClient extends EventEmitter {
   private backoffMs = 1_000;
   private destroyed = false;
   private rawBuffer: Buffer = Buffer.alloc(0);
+  private welcomed = false;
+  private conclaveSettled = false;
 
   constructor(
     private readonly accountId: string,
     private readonly mobileDeviceId: string,
-    private readonly fetchConclaveToken: () => Promise<{ token: string; expiresIn: number; host: string; compression: boolean }>,
+    private readonly fetchConclaveToken: () => Promise<{ token: string; channelId: string | undefined; expiresIn: number; host: string; compression: boolean }>,
     private readonly onDeviceChange: (deviceId: string) => void,
     private readonly log: Logger,
     private readonly debug: boolean,
+    private readonly onClientJoin?: () => void,
   ) {
     super();
   }
@@ -567,9 +602,9 @@ class ConclaveClient extends EventEmitter {
     if (this.destroyed) return;
     this.dbg('Connecting to Conclave…');
     this.fetchConclaveToken()
-      .then(({ token, expiresIn, host, compression }) => {
+      .then(({ token, channelId, expiresIn, host, compression }) => {
         this.dbg(`Token acquired — expires in ${expiresIn}s, host: ${host}, compression: ${compression}`);
-        this.openSocket(token, expiresIn, host, compression);
+        this.openSocket(token, channelId, expiresIn, host, compression);
       })
       .catch((err) => {
         this.log.warn(`[Conclave] Token fetch failed: ${err} — will retry.`);
@@ -577,7 +612,7 @@ class ConclaveClient extends EventEmitter {
       });
   }
 
-  private openSocket(conclaveToken: string, expiresIn: number, host: string, compression: boolean): void {
+  private openSocket(conclaveToken: string, channelId: string | undefined, expiresIn: number, host: string, compression: boolean): void {
     // Proactively reconnect at 80% of token lifetime so we never hit server expiry.
     const refreshMs = Math.floor(expiresIn * 0.8) * 1000;
     this.tokenRefreshTimer = setTimeout(() => {
@@ -611,7 +646,7 @@ class ConclaveClient extends EventEmitter {
         if (line.length === 0) continue;
         const text = line.toString('utf-8').trim();
         if (text.length === 0) continue;
-        this.handleLine(text, conclaveToken);
+        this.handleLine(text, conclaveToken, channelId);
       }
     };
 
@@ -656,7 +691,7 @@ class ConclaveClient extends EventEmitter {
     });
   }
 
-  private handleLine(line: string, conclaveToken: string): void {
+  private handleLine(line: string, conclaveToken: string, channelId: string | undefined): void {
     let envelope: ConclaveEnvelope;
     try {
       envelope = JSON.parse(line) as ConclaveEnvelope;
@@ -671,34 +706,56 @@ class ConclaveClient extends EventEmitter {
       const effectiveHeartbeatMs = Math.min(Math.floor(heartbeatSecs * 0.8), 55) * 1000;
       this.dbg(`Received hello — heartbeat every ${effectiveHeartbeatMs / 1000}s (server: ${heartbeatSecs}s).`);
       this.startHeartbeat(effectiveHeartbeatMs);
-      this.sendLogin(conclaveToken);
+      this.sendLogin(conclaveToken, channelId);
       return;
     }
 
     if ('welcome' in envelope) {
       this.dbg('Received welcome — Conclave session active.');
+      this.welcomed = true;
       this.backoffMs = 1_000;
+      // Ignore join events from sessions already in the channel at connect time.
+      setTimeout(() => { this.conclaveSettled = true; }, 3_000);
       return;
     }
 
-    if (isPublic(envelope)) {
-      const { event, data } = envelope.public;
+    if (isDeviceEvent(envelope)) {
+      const msg = envelope.public ?? envelope.private!;
+      const { event, data } = msg;
+      this.dbg(`[Conclave] event: ${event}, id: ${data?.id ?? 'none'}`);
       if (event === 'attr_change' || event === 'status_change') {
         const deviceId = data?.id;
         if (typeof deviceId === 'string' && deviceId.length > 0) {
-          this.dbg(`${event} for device ${deviceId}`);
           this.onDeviceChange(deviceId);
         }
       }
+      return;
     }
+
+    if ('join' in envelope) {
+      // Another client connected to the channel (e.g. the Hubspace app opening).
+      // Only act after Conclave has settled — the initial burst of join events after
+      // welcome represents sessions already in the channel, not new app opens.
+      if (this.conclaveSettled) {
+        this.dbg('Client join detected — triggering state refresh.');
+        this.onClientJoin?.();
+      }
+      return;
+    }
+
+    if ('tunnel' in envelope) {
+      return; // server capability announcement — already processed via hello/welcome
+    }
+
+    this.dbg(`[Conclave] unrecognised envelope: ${line.slice(0, 200)}`);
   }
 
-  private sendLogin(conclaveToken: string): void {
+  private sendLogin(conclaveToken: string, channelId: string | undefined): void {
     const msg = JSON.stringify({
       login: {
-        channelId: this.accountId,
+        channelId: channelId ?? this.accountId,
         accessToken: conclaveToken,
-        type: 'socket',
+        type: 'client',
         mobileDeviceId: this.mobileDeviceId,
         version: CONCLAVE_LOGIN_VERSION,
         protocol: CONCLAVE_PROTOCOL,
@@ -726,6 +783,8 @@ class ConclaveClient extends EventEmitter {
     try {
       if (this.deflateStream) {
         this.deflateStream.write(Buffer.from(data, 'utf-8'));
+        // Flush after every write so data reaches the server immediately.
+        this.deflateStream.flush(zlib.constants.Z_SYNC_FLUSH);
       } else {
         this.socket?.write(data, 'utf-8');
       }

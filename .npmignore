@@ -18,6 +18,7 @@ package-lock.json
 # Misc
 .DS_Store
 *.tsbuildinfo
+*.tgz
 discover.mjs
 .gitignore
 .env

@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.0.1] - 2026-05-23
+
+This is the first release with two-factor authentication support. The custom login UI, Conclave real-time push overhaul, and fan rotation direction are the headline changes. All alpha versions (2.0.1-alpha.1 through alpha.7) have been unpublished.
+
+### Features
+
+- **Two-factor authentication (2FA)** — the plugin now ships a Homebridge custom UI for logging in; open plugin settings in Homebridge UI and click **Start Login** to launch a PKCE OAuth flow via the official Hubspace iOS client; accounts without 2FA log in immediately; accounts with 2FA are prompted for the one-time email code in the UI; no credentials are sent outside of the official Hubspace/Afero auth stack
+- **Fan rotation direction** — fans that report the `fan-reverse` capability now expose a `RotationDirection` characteristic in HomeKit; maps `forward` → Clockwise and `reverse` → CounterClockwise; direction changes are pushed to the device via Conclave
+- **"No Response" in HomeKit when a device is offline** — all accessories now monitor the `available` field returned by the Afero REST API; when a device loses cloud reachability (`available=false`) HomeKit immediately shows "No Response" on the tile. The indicator clears automatically on the next successful poll once the device comes back online
+- **Conclave push connection overhauled** — real-time `attr_change` and `status_change` events now flow correctly; fixed login type (`client` instead of `socket`) and added handling for `private` envelopes (the format Afero uses for device events); state changes made in the Hubspace app are reflected in HomeKit within ~500 ms
+- **BLE-MAC device ID resolution** — Conclave events carry a `{4-char-prefix}{ble-mac}` device ID that didn't previously match our handler map; the plugin now resolves these against each device's `ble-mac-address` state value and caches the result, so WiFi-direct devices (plugs, outlets) quick-poll immediately on push
+- **Hub-event sweep** — when Conclave fires an event for an unresolved 16-hex-char device ID (a hub or gateway), the plugin triggers a full state poll of all devices; this accelerates offline/online detection for hub-connected lights and tape lights without requiring a separate timer
+- **App-open sweep** — when the Hubspace mobile app opens and joins the Conclave channel, the plugin detects the `join` event and triggers a full sweep 1 s later; this replicates the refresh effect users noticed when opening the app manually
+- **Polling floor removed for Conclave-active mode** — the 300 s minimum polling interval that was applied when Conclave was active has been removed; the default is 30 s regardless, giving faster offline detection for devices that don't emit push events
+- **`onGet` handlers enforce offline state** — every characteristic `onGet` handler throws a HAP `SERVICE_COMMUNICATION_FAILURE` error when the device is offline, preventing HomeKit's own polling from silently clearing the "No Response" indicator between poll cycles
+- **Poll-failure offline detection** — after 3 consecutive failed API polls for a device (network issues, API outages), the plugin proactively sets "No Response" without waiting for an `available=false` signal; clears on the next successful poll
+
+### Improvements
+
+- **StatusFault now tracks `this.offline`** — the `StatusFault` characteristic (opt-in `exposeStatusFault: true` for lights/fans; always-on for outlets) now derives its value from the same `offline` flag used for "No Response", so both signals are always in sync; previously `StatusFault` re-read the raw `available` field independently
+- **StatusFault pushed before the offline early-return** — `StatusFault.GENERAL_FAULT` is now correctly pushed to third-party HomeKit apps (Eve, Controller for HomeKit) even when the device is offline, fixing a regression where the early-return path skipped the StatusFault push
+- **Conclave diagnostic logging cleaned up** — raw byte-count logging removed; `tunnel` and `join` envelopes handled silently; device event log moved to `debug` level; double `[Conclave]` prefix in join-event messages fixed
+- **Conclave settle window** — a 3-second settle period after the initial `welcome` prevents the burst of existing-session `join` events from triggering a redundant full sweep on startup
+
+### Bug Fixes
+
+- **N-speed fan support** — fans reporting speed as `fan-speed-N-VVV` (e.g. `fan-speed-6-016` for a 6-speed fan at 16%) are now correctly parsed and written; the plugin detects the N in the value format, maps percentage to the nearest valid step, and writes back the same `fan-speed-N-ZZZ` format; fixes HomeKit always showing 50% and set-speed commands returning HTTP 400 on affected models
+- **Multi-outlet support** — surge wall taps and outdoor plugs exposing multiple independently-controlled outlets are now correctly represented as separate outlet tiles in HomeKit; each outlet reports its own on/off state and responds to commands independently
+- **Login UI hang** — removing `savePluginConfig()` from the custom UI success path prevents Homebridge from restarting mid-login and destroying the IPC channel before the spinner could stop; the UI no longer shows an infinite spinner after a successful login
+- **Color temperature clamp** — devices reporting color temperatures above 6500 K produced mired values below HAP's minimum of 154, causing a characteristic validation error; values are now clamped to the valid mired range before being sent to HomeKit
+- **Outlet StatusFault HAP warning** — `addOptionalCharacteristic(StatusFault)` is now called before the first `pushCharacteristics()` fires, eliminating the "Adding anyway" HAP warning on outlet accessories at startup
+
+---
+
 ## [1.2.2] - 2026-05-17
 
 ### Improvements

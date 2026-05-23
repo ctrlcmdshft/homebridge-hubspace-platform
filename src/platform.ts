@@ -32,6 +32,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   private consecutiveFailCycles = 0;
   private conclaveActive = false;
   private readonly pendingQuickPolls = new Set<string>();
+  /** Cache: Conclave BLE-MAC-based device ID → metadevice UUID. */
+  private readonly conclaveIdMap = new Map<string, string>();
   private readonly cfg: HubspaceConfig;
 
   constructor(
@@ -106,8 +108,11 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       await this.discoverDevices();
       if (!this.cfg.disableConclave) {
         this.conclaveActive = true;
-        this.client.startConclave((deviceId) => this.scheduleQuickPoll(deviceId, 0));
-        this.log.info('Conclave push connection started — slow-poll fallback every 300s.');
+        this.client.startConclave(
+          (deviceId) => this.scheduleQuickPoll(deviceId, 500),
+          () => this.scheduleFullSweep(1_000),
+        );
+        this.log.info('Conclave push connection started.');
       }
       this.startPolling();
     } catch (err) {
@@ -234,13 +239,10 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   // ─── Polling ──────────────────────────────────────────────────────────────────
 
   private startPolling(): void {
-    const defaultInterval = this.conclaveActive ? 300 : 30;
-    const raw = this.cfg.pollingInterval ?? defaultInterval;
-    const intervalSecs = Math.min(600, Math.max(this.conclaveActive ? 300 : 10, raw));
+    const raw = this.cfg.pollingInterval ?? 30;
+    const intervalSecs = Math.min(600, Math.max(10, raw));
     const intervalMs = intervalSecs * 1000;
-    this.log.info(
-      `Starting state polling every ${intervalSecs}s${this.conclaveActive ? ' (Conclave fallback)' : ''}.`,
-    );
+    this.log.info(`Starting state polling every ${intervalSecs}s.`);
     this.pollTimer = setInterval(() => this.pollDevices(), intervalMs);
     // Run immediately on first start.
     this.pollDevices();
@@ -253,18 +255,73 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     }
   }
 
-  scheduleQuickPoll(deviceId: string, delayMs: number): void {
-    if (this.pendingQuickPolls.has(deviceId)) return;
-    this.pendingQuickPolls.add(deviceId);
+  scheduleQuickPoll(conclaveId: string, delayMs: number): void {
+    // Conclave sends BLE-MAC-based IDs (e.g. "837024dcc33c87c6").
+    // Resolve to our metadevice UUID before scheduling.
+    const metadeviceId = this.resolveConclaveId(conclaveId);
+    if (!metadeviceId) {
+      // A 16-hex-char ID that doesn't match any known device is likely a hub or
+      // gateway. Hub events mean hub-connected lights may have changed availability,
+      // so trigger a full sweep so they pick up available=false quickly.
+      if (/^[0-9a-f]{16}$/i.test(conclaveId)) {
+        this.log.debug(`[Conclave] Unresolved device ${conclaveId} — scheduling full sweep.`);
+        this.scheduleFullSweep(delayMs);
+      }
+      return;
+    }
+
+    if (this.pendingQuickPolls.has(metadeviceId)) return;
+    this.pendingQuickPolls.add(metadeviceId);
     setTimeout(() => {
-      this.pendingQuickPolls.delete(deviceId);
-      const handler = this.handlers.get(deviceId);
+      this.pendingQuickPolls.delete(metadeviceId);
+      const handler = this.handlers.get(metadeviceId);
       if (!handler) return;
-      const allIds = handler.device.allIds ?? [deviceId];
+      this.log.info(`[Conclave] Quick-poll → "${handler.device.friendlyName}"`);
+      const allIds = handler.device.allIds ?? [metadeviceId];
       this.client.getDeviceState(allIds)
         .then(values => handler.updateState(values))
-        .catch(err => this.log.warn(`Quick-poll failed for ${deviceId}: ${err}`));
+        .catch(err => this.log.warn(`Quick-poll failed for ${metadeviceId}: ${err}`));
     }, delayMs);
+  }
+
+  private scheduleFullSweep(delayMs: number): void {
+    if (this.pendingQuickPolls.has('__sweep__')) return;
+    this.pendingQuickPolls.add('__sweep__');
+    setTimeout(() => {
+      this.pendingQuickPolls.delete('__sweep__');
+      this.log.info('[Conclave] Full sweep triggered by hub event.');
+      this.pollDevices();
+    }, delayMs);
+  }
+
+  /**
+   * Resolve a Conclave device ID to a metadevice UUID.
+   *
+   * Afero Conclave sends IDs of the form "<4-char-prefix><ble-mac>" (16 hex chars).
+   * Each device's BLE MAC is available as the `ble-mac-address` function class in
+   * its state values.  We match the last 12 chars of the Conclave ID against known
+   * BLE MACs and cache the result.
+   */
+  private resolveConclaveId(conclaveId: string): string | undefined {
+    if (this.handlers.has(conclaveId)) return conclaveId; // already a metadevice UUID
+    if (this.conclaveIdMap.has(conclaveId)) return this.conclaveIdMap.get(conclaveId);
+
+    const macSuffix = conclaveId.slice(-12).toLowerCase();
+    for (const [metadeviceId, handler] of this.handlers) {
+      const bleMac = handler.device.values
+        .find(v => v.functionClass === 'ble-mac-address')
+        ?.value;
+      if (typeof bleMac === 'string' && bleMac.toLowerCase().replace(/:/g, '') === macSuffix) {
+        this.conclaveIdMap.set(conclaveId, metadeviceId);
+        this.log.info(`[Conclave] Resolved ${conclaveId} → "${handler.device.friendlyName}"`);
+        return metadeviceId;
+      }
+    }
+
+    if (this.debug && /^[0-9a-f]{16}$/i.test(conclaveId)) {
+      this.log.info(`[Conclave] No BLE-MAC match for ${conclaveId} — treating as hub/gateway.`);
+    }
+    return undefined;
   }
 
   private async pollDevices(): Promise<void> {
@@ -283,8 +340,10 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
     let failCount = 0;
     results.forEach((r, i) => {
+      const [, handler] = entries[i];
       if (r.status === 'rejected') {
         failCount++;
+        handler.markPollFailed();
         if (this.consecutiveFailCycles < 3) {
           const [deviceId] = entries[i];
           this.log.warn(`Poll failed for ${deviceId}: ${r.reason}`);

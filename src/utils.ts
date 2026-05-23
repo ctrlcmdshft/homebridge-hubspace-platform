@@ -101,12 +101,22 @@ const SEMANTIC_SPEED_TO_PERCENT: Record<string, number> = {
   'comfort-breeze': 55,
 };
 
+/** Parse a `fan-speed-N-VVV` value. Returns { numSpeeds, speedValue } or null. */
+function parseNSpeedValue(lower: string): { numSpeeds: number; speedValue: number } | null {
+  const m = lower.match(/^fan-speed-(\d+)-(\d+)$/);
+  if (!m) return null;
+  return { numSpeeds: parseInt(m[1], 10), speedValue: parseInt(m[2], 10) };
+}
+
 /** Convert a Hubspace fan-speed value to a HomeKit rotation-speed percentage. */
 export function hubspeedToPercent(value: string): number {
   const lower = value.toLowerCase();
   if (SEMANTIC_SPEED_TO_PERCENT[lower] !== undefined) {
     return SEMANTIC_SPEED_TO_PERCENT[lower];
   }
+  // N-speed numeric format: fan-speed-6-016, fan-speed-4-025, etc.
+  const nSpeed = parseNSpeedValue(lower);
+  if (nSpeed) return nSpeed.speedValue;
   const n = parseInt(value, 10);
   if (!isNaN(n) && n >= 0 && n <= 100) return n;
   return 50;
@@ -116,7 +126,21 @@ export function hubspeedToPercent(value: string): number {
 export function percentToHubspeed(percent: number, currentValue: string): string {
   const lower = currentValue.toLowerCase();
 
-  // If device uses semantic speed names, map to the nearest named value.
+  // N-speed numeric format: fan-speed-6-016, fan-speed-4-025, etc.
+  // The device self-describes its speed count; we snap to the nearest valid step.
+  const nSpeed = parseNSpeedValue(lower);
+  if (nSpeed) {
+    const { numSpeeds } = nSpeed;
+    let bestI = 0, bestDist = Infinity;
+    for (let i = 0; i <= numSpeeds; i++) {
+      const dist = Math.abs(Math.floor(i * 100 / numSpeeds) - percent);
+      if (dist < bestDist) { bestDist = dist; bestI = i; }
+    }
+    const v = Math.floor(bestI * 100 / numSpeeds);
+    return `fan-speed-${numSpeeds}-${v.toString().padStart(3, '0')}`;
+  }
+
+  // Legacy fixed 4-step format: fan-speed-025, fan-speed-050, etc.
   if (lower.startsWith('fan-speed-')) {
     if (percent <= 0)  return 'fan-speed-000';
     if (percent <= 25) return 'fan-speed-025';

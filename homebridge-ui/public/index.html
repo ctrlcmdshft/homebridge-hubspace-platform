@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hubspace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #e0e0e0; background: transparent; padding: 16px; }
+
+    .card { background: #2a2a2a; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .card-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 14px; }
+
+    .status-row { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot-green { background: #4caf50; box-shadow: 0 0 6px #4caf5066; }
+    .dot-red   { background: #f44336; }
+    .dot-yellow { background: #ff9800; }
+    .status-label { font-size: 15px; font-weight: 500; }
+    .status-sub   { font-size: 12px; color: #888; margin-top: 4px; }
+
+    .otp-input { display: flex; gap: 8px; margin: 16px 0; }
+    .otp-input input {
+      width: 44px; height: 52px; text-align: center; font-size: 22px; font-weight: 600;
+      background: #1a1a1a; border: 1.5px solid #444; border-radius: 6px; color: #fff;
+      outline: none; transition: border-color 0.15s;
+    }
+    .otp-input input:focus { border-color: #4f8ef7; }
+
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; color: #888; margin-bottom: 5px; }
+    .field input {
+      width: 100%; padding: 9px 12px; background: #1a1a1a; border: 1.5px solid #444;
+      border-radius: 6px; color: #e0e0e0; font-size: 14px; outline: none;
+    }
+    .field input:focus { border-color: #4f8ef7; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px;
+      border: none; border-radius: 6px; font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: #4f8ef7; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #3a7ae6; }
+    .btn-ghost { background: transparent; color: #888; border: 1.5px solid #444; }
+    .btn-ghost:hover:not(:disabled) { border-color: #666; color: #ccc; }
+    .btn-danger { background: transparent; color: #f44336; border: 1.5px solid #f4433644; }
+    .btn-danger:hover:not(:disabled) { background: #f4433611; }
+
+    .alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-top: 14px; }
+    .alert-error   { background: #f4433618; border: 1px solid #f4433644; color: #ff8a80; }
+    .alert-success { background: #4caf5018; border: 1px solid #4caf5044; color: #a5d6a7; }
+    .alert-info    { background: #4f8ef718; border: 1px solid #4f8ef744; color: #90caf9; }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ffffff44; border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hidden { display: none !important; }
+    .dimmed { opacity: 0.5; }
+    .hint { font-size: 12px; color: #666; margin-top: 8px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<!-- STATUS CARD -->
+<div class="card" id="status-card">
+  <div class="card-title">Account Status</div>
+  <div class="status-row">
+    <div class="dot dot-yellow" id="status-dot"></div>
+    <div>
+      <div class="status-label" id="status-label">Checking…</div>
+      <div class="status-sub" id="status-sub"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SETUP CARD (shown when not connected) -->
+<div class="card hidden" id="setup-card">
+  <div class="card-title" id="setup-title">Sign In</div>
+
+  <!-- STEP: credentials -->
+  <div id="step-creds">
+    <div class="field">
+      <label for="inp-username">Hubspace Username (Email)</label>
+      <input type="email" id="inp-username" placeholder="you@example.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="inp-password">Password</label>
+      <input type="password" id="inp-password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="row" style="margin-top:0">
+      <button class="btn btn-primary" id="btn-start">
+        <span id="btn-start-spinner" class="spinner hidden"></span>
+        Sign In
+      </button>
+    </div>
+    <div id="creds-alert" class="hidden"></div>
+  </div>
+
+  <!-- STEP: OTP entry -->
+  <div id="step-otp" class="hidden">
+    <div class="alert alert-info">A 6-digit code was sent to your email. Enter it below.</div>
+    <div class="otp-input" id="otp-boxes">
+      <input type="text" inputmode="numeric" maxlength="1" id="o1">
+      <input type="text" inputmode="numeric" maxlength="1" id="o2">
+      <input type="text" inputmode="numeric" maxlength="1" id="o3">
+      <input type="text" inputmode="numeric" maxlength="1" id="o4">
+      <input type="text" inputmode="numeric" maxlength="1" id="o5">
+      <input type="text" inputmode="numeric" maxlength="1" id="o6">
+    </div>
+    <div class="row" style="margin-top:0">
+      <button class="btn btn-primary" id="btn-otp" disabled>
+        <span id="btn-otp-spinner" class="spinner hidden"></span>
+        Confirm Code
+      </button>
+      <button class="btn btn-ghost" id="btn-restart">Start Over</button>
+    </div>
+    <div id="otp-alert" class="hidden"></div>
+  </div>
+
+  <!-- STEP: success -->
+  <div id="step-success" class="hidden">
+    <div class="alert alert-success">✓ Authenticated successfully. Tokens cached — Homebridge will use them automatically.</div>
+    <p class="hint" style="margin-top:10px;text-align:center">Restart Homebridge to apply.</p>
+  </div>
+</div>
+
+<!-- CONNECTED CARD (shown when tokens are valid) -->
+<div class="card hidden" id="connected-card">
+  <div class="card-title">Account</div>
+  <div class="status-row">
+    <div class="dot dot-green"></div>
+    <div>
+      <div class="status-label" id="connected-user">Connected</div>
+      <div class="status-sub">Tokens cached — will refresh automatically</div>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-danger" id="btn-reauth">Re-authenticate</button>
+  </div>
+</div>
+
+<script>
+homebridge.addEventListener('ready', async () => {
+  homebridge.showSchemaForm();
+
+  // ── helpers ──────────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const show = id => $(id).classList.remove('hidden');
+  const hide = id => $(id).classList.add('hidden');
+  const setAlert = (id, msg, type = 'error') => {
+    const el = $(id);
+    el.className = `alert alert-${type}`;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  };
+  const clearAlert = id => $(id).classList.add('hidden');
+  const setLoading = (btnId, spinnerId, loading) => {
+    $(btnId).disabled = loading;
+    loading ? show(spinnerId) : hide(spinnerId);
+  };
+
+  // ── OTP box wiring ───────────────────────────────────────────────────────────
+  const otpIds = ['o1','o2','o3','o4','o5','o6'];
+  for (let i = 0; i < otpIds.length; i++) {
+    const input = $(otpIds[i]);
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '').slice(-1);
+      if (input.value && i < otpIds.length - 1) $(otpIds[i + 1]).focus();
+      updateOtpBtn();
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !input.value && i > 0) $(otpIds[i - 1]).focus();
+    });
+    input.addEventListener('paste', e => {
+      e.preventDefault();
+      const digits = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+      digits.split('').forEach((d, j) => { if ($(otpIds[j])) $(otpIds[j]).value = d; });
+      const last = Math.min(digits.length, otpIds.length - 1);
+      $(otpIds[last]).focus();
+      updateOtpBtn();
+    });
+  }
+  const updateOtpBtn = () => {
+    const full = otpIds.every(id => $(id).value.length === 1);
+    $('btn-otp').disabled = !full;
+  };
+  const getOtpCode = () => otpIds.map(id => $(id).value).join('');
+  const clearOtp = () => { otpIds.forEach(id => $(id).value = ''); updateOtpBtn(); };
+
+  // ── pre-fill credentials from saved config ───────────────────────────────────
+  try {
+    const configs = await homebridge.getPluginConfig();
+    if (configs[0]?.username) $('inp-username').value = configs[0].username;
+    if (configs[0]?.password) $('inp-password').value = configs[0].password;
+  } catch { /* ignore */ }
+
+  // ── load status ───────────────────────────────────────────────────────────────
+  let status;
+  try {
+    status = await homebridge.request('/auth-status');
+  } catch {
+    status = { cached: false, valid: false, username: null };
+  }
+
+  $('status-dot').className = 'dot ' + (status.valid ? 'dot-green' : 'dot-red');
+  $('status-label').textContent = status.valid ? 'Connected' : (status.cached ? 'Tokens expired' : 'Not authenticated');
+  $('status-sub').textContent = status.valid ? (status.username ? `Signed in as ${status.username}` : '') : '';
+
+  if (status.valid) {
+    $('connected-user').textContent = status.username ?? 'Connected';
+    show('connected-card');
+  } else {
+    show('setup-card');
+  }
+
+  // ── start login ───────────────────────────────────────────────────────────────
+  $('btn-start').addEventListener('click', async () => {
+    clearAlert('creds-alert');
+
+    const username = $('inp-username').value.trim();
+    const password = $('inp-password').value;
+
+    if (!username || !password) {
+      setAlert('creds-alert', 'Enter your Hubspace username and password to continue.');
+      return;
+    }
+
+    setLoading('btn-start', 'btn-start-spinner', true);
+
+    try {
+      const result = await homebridge.request('/start-login', { username, password });
+      if (result.success) {
+        try {
+          const configs = await homebridge.getPluginConfig();
+          const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
+          await homebridge.updatePluginConfig([{ ...existing, username, password }]);
+        } catch { /* non-fatal */ }
+        hide('step-creds');
+        show('step-success');
+        $('status-dot').className = 'dot dot-green';
+        $('status-label').textContent = 'Connected';
+        $('status-sub').textContent = `Signed in as ${username}`;
+      } else if (result.needed2fa) {
+        hide('step-creds');
+        show('step-otp');
+        setTimeout(() => $('o1').focus(), 50);
+      }
+    } catch (err) {
+      setAlert('creds-alert', err?.message ?? err ?? 'Login failed. Please try again.');
+    } finally {
+      setLoading('btn-start', 'btn-start-spinner', false);
+    }
+  });
+
+  // ── submit OTP ────────────────────────────────────────────────────────────────
+  $('btn-otp').addEventListener('click', async () => {
+    clearAlert('otp-alert');
+    setLoading('btn-otp', 'btn-otp-spinner', true);
+    try {
+      await homebridge.request('/submit-otp', { emailCode: getOtpCode() });
+      try {
+        const configs = await homebridge.getPluginConfig();
+        const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
+        const username = $('inp-username').value.trim();
+        const password = $('inp-password').value;
+        if (username && password) {
+          await homebridge.updatePluginConfig([{ ...existing, username, password }]);
+        }
+      } catch { /* non-fatal */ }
+      hide('step-otp');
+      show('step-success');
+      $('status-dot').className = 'dot dot-green';
+      $('status-label').textContent = 'Connected';
+      $('status-sub').textContent = '';
+    } catch (err) {
+      setAlert('otp-alert', err?.message ?? err ?? 'Invalid code. Please try again.');
+      clearOtp();
+      setTimeout(() => $('o1').focus(), 50);
+    } finally {
+      setLoading('btn-otp', 'btn-otp-spinner', false);
+    }
+  });
+
+  // ── restart / re-auth ─────────────────────────────────────────────────────────
+  $('btn-restart').addEventListener('click', () => {
+    clearOtp();
+    clearAlert('otp-alert');
+    hide('step-otp');
+    show('step-creds');
+  });
+
+  $('btn-reauth').addEventListener('click', () => {
+    hide('connected-card');
+    $('status-dot').className = 'dot dot-red';
+    $('status-label').textContent = 'Not authenticated';
+    $('status-sub').textContent = '';
+    show('setup-card');
+  });
+});
+</script>
+</body>
+</html>
