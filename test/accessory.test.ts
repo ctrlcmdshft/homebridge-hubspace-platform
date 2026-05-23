@@ -32,7 +32,15 @@ function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
   return {
     log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
     debug: false,
+    verbose: false,
     exposeStatusFault: opts.exposeStatusFault ?? false,
+    invertOutletStatus: false,
+    api: {
+      hap: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        HapStatusError: class HapStatusError extends Error { constructor(public hapStatus: number) { super(); } },
+      },
+    },
     client: { setDeviceState: jest.fn().mockResolvedValue(undefined) },
     scheduleQuickPoll: jest.fn(),
     Service: {

@@ -5,7 +5,6 @@ import {
   Logger,
   HAPStatus,
 } from 'homebridge';
-import { HapStatusError } from '@homebridge/hap-nodejs';
 import { isAxiosError } from 'axios';
 import type { HubspacePlatform } from './platform';
 import { HubspaceDevice, DeviceStateValue, FC, HubspaceAccessoryContext } from './types';
@@ -25,6 +24,16 @@ export abstract class BaseHubspaceAccessory {
   protected readonly log: Logger;
   /** Map key: `functionClass:functionInstance` → latest value object. */
   protected stateMap: Map<string, DeviceStateValue> = new Map();
+  protected offline = false;
+  private pollFails = 0;
+  private static readonly OFFLINE_THRESHOLD = 3;
+  /**
+   * When true, `available=false` in REST state sets No Response.
+   * All device classes opt in — `available` is the cloud's authoritative
+   * reachability signal.  The onGet handlers enforce offline state so HomeKit
+   * polling cannot clear it.
+   */
+  protected readonly availableOffline: boolean = true;
 
   constructor(
     protected readonly platform: HubspacePlatform,
@@ -83,32 +92,57 @@ export abstract class BaseHubspaceAccessory {
 
   /** Called by the platform on each poll cycle with fresh state data. */
   updateState(values: DeviceStateValue[]): void {
+    const wasOffline = this.offline;
+    this.pollFails = 0;
     this.rebuildStateMap(values);
+
+    if (this.availableOffline) {
+      const avail = this.findValue(FC.AVAILABLE);
+      const isAvailable = avail === undefined
+        || avail.value === true
+        || avail.value === 'true'
+        || avail.value === 1;
+      this.offline = !isAvailable;
+    } else {
+      this.offline = false;
+    }
+
     if (this.platform.verbose) {
       this.log.info(
         `State for "${this.device.friendlyName}": ` +
         values.map(v => `${v.functionClass}[${v.functionInstance}]=${typeof v.value === 'object' ? JSON.stringify(v.value) : v.value}`).join(', '),
       );
     }
+    if (wasOffline && !this.offline) {
+      this.log.info(`"${this.device.friendlyName}" is back online — clearing No Response.`);
+    } else if (!wasOffline && this.offline) {
+      this.log.warn(`"${this.device.friendlyName}" is offline (not available) — setting No Response.`);
+    }
     this.pushCharacteristics();
+  }
+
+  /** Called by the platform when a poll attempt fails for this device. */
+  markPollFailed(): void {
+    this.pollFails++;
+    if (this.pollFails >= BaseHubspaceAccessory.OFFLINE_THRESHOLD && !this.offline) {
+      this.offline = true;
+      this.log.warn(`"${this.device.friendlyName}" unreachable after ${this.pollFails} failed polls — setting No Response.`);
+      this.pushCharacteristics();
+    }
   }
 
   // ── Fault status ──────────────────────────────────────────────────────────────
 
-  /** Throws SERVICE_COMMUNICATION_FAILURE if the device is offline — triggers "No Response" in HomeKit. */
-  protected requireAvailable(): void {
-    const v = this.findValue(FC.AVAILABLE);
-    if (v !== undefined && v.value !== true && v.value !== 'true' && v.value !== 1) {
-      throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
+  /** Returns a HapStatusError for use with updateCharacteristic when offline. */
+  protected get noResponse(): Error {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new (this.platform.api.hap as any).HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE) as Error;
   }
 
   protected getStatusFault(): CharacteristicValue {
-    const v = this.findValue(FC.AVAILABLE);
-    if (v === undefined) return this.platform.Characteristic.StatusFault.NO_FAULT;
-    return (v.value === true || v.value === 'true' || v.value === 1)
-      ? this.platform.Characteristic.StatusFault.NO_FAULT
-      : this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+    return this.offline
+      ? this.platform.Characteristic.StatusFault.GENERAL_FAULT
+      : this.platform.Characteristic.StatusFault.NO_FAULT;
   }
 
   // ── Abstract interface ────────────────────────────────────────────────────────
@@ -182,13 +216,19 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
     // Power (always present).
     this.svc.getCharacteristic(this.platform.Characteristic.On)
-      .onGet(() => { this.requireAvailable(); return this.getPower(); })
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getPower();
+      })
       .onSet((v) => { void this.setPower(v as boolean); });
 
     // Brightness.
     if (this.findValue(FC.BRIGHTNESS)) {
       this.svc.getCharacteristic(this.platform.Characteristic.Brightness)
-        .onGet(() => { this.requireAvailable(); return this.getBrightness(); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getBrightness();
+        })
         .onSet((v) => { void this.setBrightness(v as number); });
     }
 
@@ -197,18 +237,27 @@ export class LightAccessory extends BaseHubspaceAccessory {
       const minK = 2700, maxK = 6500;
       this.svc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
         .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
-        .onGet(() => { this.requireAvailable(); return this.getColorTemp(); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getColorTemp();
+        })
         .onSet((v) => { void this.setColorTemp(v as number); });
     }
 
     // RGB color (Hue + Saturation).
     if (this.findValue(FC.COLOR_RGB)) {
       this.svc.getCharacteristic(this.platform.Characteristic.Hue)
-        .onGet(() => { this.requireAvailable(); return this.getHue(); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getHue();
+        })
         .onSet((v) => { void this.setPendingHue(v as number); });
 
       this.svc.getCharacteristic(this.platform.Characteristic.Saturation)
-        .onGet(() => { this.requireAvailable(); return this.getSaturation(); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getSaturation();
+        })
         .onSet((v) => { void this.setPendingSat(v as number); });
     }
 
@@ -234,7 +283,10 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
   private getColorTemp(): CharacteristicValue {
     const v = this.findValue(FC.COLOR_TEMP);
-    return v ? kelvinToMired(Number(v.value)) : 370; // 2702 K default
+    if (!v) return 370; // 2702 K default
+    const minMired = kelvinToMired(6500); // 154
+    const maxMired = kelvinToMired(2700); // 370
+    return Math.min(maxMired, Math.max(minMired, kelvinToMired(Number(v.value))));
   }
 
   private getHue(): CharacteristicValue {
@@ -323,6 +375,14 @@ export class LightAccessory extends BaseHubspaceAccessory {
   // ── Push ──────────────────────────────────────────────────────────────────────
 
   protected pushCharacteristics(): void {
+    if (this.platform.exposeStatusFault) {
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
+    }
+    if (this.offline) {
+      this.svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      return;
+    }
     this.svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower());
 
     if (this.findValue(FC.BRIGHTNESS)) {
@@ -337,10 +397,6 @@ export class LightAccessory extends BaseHubspaceAccessory {
       this.svc.updateCharacteristic(this.platform.Characteristic.Hue, this.getHue());
       this.svc.updateCharacteristic(
         this.platform.Characteristic.Saturation, this.getSaturation());
-    }
-    if (this.platform.exposeStatusFault) {
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.StatusFault, this.getStatusFault());
     }
   }
 }
@@ -364,21 +420,35 @@ export class FanAccessory extends BaseHubspaceAccessory {
     // Active (fan power — use functionInstance that is NOT "light-power").
     const fanPower = this.findFanPowerValue();
     this.fanSvc.getCharacteristic(this.platform.Characteristic.Active)
-      .onGet(() => { this.requireAvailable(); return this.getFanActive(); })
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getFanActive();
+      })
       .onSet((v) => { void this.setFanActive(v as number, fanPower?.functionInstance); });
-
 
     // Rotation speed — 0 = off, 25/50/75/100 = speed steps.
     if (this.findValue(FC.FAN_SPEED)) {
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .updateValue(this.getFanSpeed())
         .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
-        .onGet(() => { this.requireAvailable(); return this.getFanSpeed(); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getFanSpeed();
+        })
         .onSet((v) => { void this.setFanSpeed(v as number); });
     }
 
+    // Rotation direction — auto-exposed when device reports fan-reverse.
+    if (this.findValue(FC.FAN_REVERSE)) {
+      this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationDirection)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getFanDirection();
+        })
+        .onSet((v) => { void this.setFanDirection(v as number); });
+    }
 
-    // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
+    // Non-standard: StatusFault for offline detection (opt-in; may not render in AppleHome).
     if (this.platform.exposeStatusFault) {
       this.fanSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
       this.fanSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
@@ -397,12 +467,18 @@ export class FanAccessory extends BaseHubspaceAccessory {
         );
 
       this.lightSvc.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(() => { this.requireAvailable(); return this.getLightPower(); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getLightPower();
+        })
         .onSet((v) => { void this.setLightPower(v as boolean); });
 
       if (hasBrightness) {
         this.lightSvc.getCharacteristic(this.platform.Characteristic.Brightness)
-          .onGet(() => { this.requireAvailable(); return this.getLightBrightness(); })
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getLightBrightness();
+          })
           .onSet((v) => { void this.setLightBrightness(v as number); });
       }
     }
@@ -453,6 +529,20 @@ export class FanAccessory extends BaseHubspaceAccessory {
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
     await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  private getFanDirection(): CharacteristicValue {
+    const v = this.findValue(FC.FAN_REVERSE);
+    return v?.value === 'reverse'
+      ? this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE
+      : this.platform.Characteristic.RotationDirection.CLOCKWISE;
+  }
+
+  private async setFanDirection(hkDirection: number): Promise<void> {
+    const reverse = hkDirection === this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE;
+    await this.setDeviceValues([
+      this.buildPatch(FC.FAN_REVERSE, reverse ? 'reverse' : 'forward', 'fan-reverse'),
+    ]);
   }
 
   // ── Master power companion accessory ─────────────────────────────────────────
@@ -551,12 +641,26 @@ export class FanAccessory extends BaseHubspaceAccessory {
   // ── Push ──────────────────────────────────────────────────────────────────────
 
   protected pushCharacteristics(): void {
+    if (this.platform.exposeStatusFault) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
+    }
+    if (this.offline) {
+      this.fanSvc.updateCharacteristic(this.platform.Characteristic.Active, this.noResponse);
+      this.lightSvc?.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      return;
+    }
     this.fanSvc.updateCharacteristic(
       this.platform.Characteristic.Active, this.getFanActive());
 
     if (this.findValue(FC.FAN_SPEED)) {
       this.fanSvc.updateCharacteristic(
         this.platform.Characteristic.RotationSpeed, this.getFanSpeed());
+    }
+
+    if (this.findValue(FC.FAN_REVERSE)) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.RotationDirection, this.getFanDirection());
     }
 
     if (this.lightSvc) {
@@ -578,10 +682,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
         ?.updateCharacteristic(this.platform.Characteristic.On, this.getMasterPower());
     }
 
-    if (this.platform.exposeStatusFault) {
-      this.fanSvc.updateCharacteristic(
-        this.platform.Characteristic.StatusFault, this.getStatusFault());
-    }
   }
 }
 
@@ -604,14 +704,25 @@ export class OutletAccessory extends BaseHubspaceAccessory {
       this.accessory.addService(ServiceType, this.device.friendlyName);
 
     this.svc.getCharacteristic(this.platform.Characteristic.On)
-      .onGet(() => { this.requireAvailable(); return this.getPower(); })
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getPower();
+      })
       .onSet((v) => { void this.setPower(v as boolean); });
 
     // OutletInUse is optional on the Outlet service (not Switch).
     if (useOutletService) {
       this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
-        .onGet(() => { this.requireAvailable(); return this.getPower(); });
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getPower();
+        });
     }
+
+    // StatusFault for offline detection (always present on outlets).
+    this.svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+    this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+      .onGet(() => this.getStatusFault());
   }
 
   private getPower(): CharacteristicValue {
@@ -627,6 +738,12 @@ export class OutletAccessory extends BaseHubspaceAccessory {
   }
 
   protected pushCharacteristics(): void {
+    this.svc.updateCharacteristic(
+      this.platform.Characteristic.StatusFault, this.getStatusFault());
+    if (this.offline) {
+      this.svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      return;
+    }
     this.svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower());
     if (this.svc.getCharacteristic(this.platform.Characteristic.OutletInUse)) {
       this.svc.updateCharacteristic(this.platform.Characteristic.OutletInUse, this.getPower());
@@ -658,11 +775,17 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
         this.accessory.addService(this.platform.Service.Outlet, label, instance);
 
       svc.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(() => { this.requireAvailable(); return this.getPowerForOutlet(instance); })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getPowerForOutlet(instance);
+        })
         .onSet((v) => { void this.setPowerForOutlet(instance, v as boolean); });
 
       svc.getCharacteristic(this.platform.Characteristic.OutletInUse)
-        .onGet(() => { this.requireAvailable(); return this.getPowerForOutlet(instance); });
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getPowerForOutlet(instance);
+        });
 
       this.outletServices.set(instance, svc);
     }
@@ -678,6 +801,12 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
   }
 
   protected pushCharacteristics(): void {
+    if (this.offline) {
+      for (const [, svc] of this.outletServices) {
+        svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      }
+      return;
+    }
     for (const [instance, svc] of this.outletServices) {
       svc.updateCharacteristic(this.platform.Characteristic.On, this.getPowerForOutlet(instance));
       svc.updateCharacteristic(this.platform.Characteristic.OutletInUse, this.getPowerForOutlet(instance));

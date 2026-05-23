@@ -219,6 +219,17 @@ describe('hubspeedToPercent', () => {
     expect(hubspeedToPercent('turbo')).toBe(50);
     expect(hubspeedToPercent('')).toBe(50);
   });
+
+  it('converts N-speed numeric format (fan-speed-N-VVV)', () => {
+    expect(hubspeedToPercent('fan-speed-6-000')).toBe(0);
+    expect(hubspeedToPercent('fan-speed-6-016')).toBe(16);
+    expect(hubspeedToPercent('fan-speed-6-033')).toBe(33);
+    expect(hubspeedToPercent('fan-speed-6-050')).toBe(50);
+    expect(hubspeedToPercent('fan-speed-6-066')).toBe(66);
+    expect(hubspeedToPercent('fan-speed-6-083')).toBe(83);
+    expect(hubspeedToPercent('fan-speed-6-100')).toBe(100);
+    expect(hubspeedToPercent('FAN-SPEED-6-016')).toBe(16);
+  });
 });
 
 // ─── Fan speed: percentToHubspeed ─────────────────────────────────────────────
@@ -273,6 +284,29 @@ describe('percentToHubspeed (legacy mode)', () => {
 
   it('maps 100% → high', () => {
     expect(percentToHubspeed(100, current)).toBe('high');
+  });
+});
+
+describe('percentToHubspeed (N-speed numeric format)', () => {
+  const current6 = 'fan-speed-6-016';
+
+  it('snaps to nearest valid step for a 6-speed fan', () => {
+    expect(percentToHubspeed(0,   current6)).toBe('fan-speed-6-000');
+    expect(percentToHubspeed(16,  current6)).toBe('fan-speed-6-016');
+    expect(percentToHubspeed(25,  current6)).toBe('fan-speed-6-033'); // 25 → nearest: |25-16|=9 vs |25-33|=8 → 33
+    expect(percentToHubspeed(33,  current6)).toBe('fan-speed-6-033');
+    expect(percentToHubspeed(50,  current6)).toBe('fan-speed-6-050');
+    expect(percentToHubspeed(66,  current6)).toBe('fan-speed-6-066');
+    expect(percentToHubspeed(83,  current6)).toBe('fan-speed-6-083');
+    expect(percentToHubspeed(100, current6)).toBe('fan-speed-6-100');
+  });
+
+  it('uses N from the current value regardless of speed count', () => {
+    // 3-speed: valid steps are 0, 33, 66, 100 (floor(i*100/3))
+    expect(percentToHubspeed(33,  'fan-speed-3-033')).toBe('fan-speed-3-033');
+    expect(percentToHubspeed(50,  'fan-speed-3-033')).toBe('fan-speed-3-066'); // |50-33|=17 vs |50-66|=16 → 66
+    expect(percentToHubspeed(75,  'fan-speed-3-033')).toBe('fan-speed-3-066');
+    expect(percentToHubspeed(100, 'fan-speed-3-033')).toBe('fan-speed-3-100');
   });
 });
 

@@ -29,7 +29,7 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 | Device | Features | Status |
 | --- | --- | --- |
-| Hampton Bay Universal Smart Fan Controller (76278) | Fan on/off · 4 speeds · light on/off · brightness · Comfort Breeze | Tested with hardware |
+| Hampton Bay Universal Smart Fan Controller (76278) | Fan on/off · 4 speeds · light on/off · brightness · rotation direction ¹ · Comfort Breeze ¹ | Tested with hardware |
 | Defiant Smart Indoor Plug (HPPA11AWB) | On/off | Tested with hardware |
 | Commercial Electric Smart Surge Protector (LA-12A-C) | 4 smart outlets (of 6 total) independently controlled | Tested with hardware |
 | Defiant Smart Wi-Fi Outdoor Plug (HPPA52CWB) | 2 independently controlled outlets | Tested with hardware |
@@ -37,6 +37,8 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 | EcoSmart Smart RGBWIC LED Strip Light (AL-HSTL-RGBICTW) | On/off · brightness · color temperature · RGB color | Tested with hardware |
 | EcoSmart Smart A19 Color Bulb (12A19060WRGBWH1) | On/off · brightness · color temperature · RGB color | Tested with hardware |
 
+> ¹ **Device-dependent:** rotation direction requires the device to report the `fan-reverse` capability; Comfort Breeze requires `toggle[comfort-breeze]`. These tiles will not appear if the hardware doesn't support the capability — no config change needed.
+>
 > **Note:** Smart switches are implemented based on the Afero API but have not yet been verified with real hardware. If you own one and can confirm it works (or find a bug), please open an issue.
 >
 > **Hubspace light bulbs:** All EcoSmart/Hubspace A19 bulbs (color changing and tunable white variants) should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only. The plugin detects capabilities automatically.
@@ -48,7 +50,17 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 - **Node.js** all active LTS releases (currently 22 and 24)
 - **Homebridge** ≥ 1.8.0 or 2.x
 - A Hubspace / Home Depot account with at least one paired device
-- **2FA supported** — accounts with email-code two-factor authentication are supported via the plugin's built-in login UI (open plugin settings in Homebridge UI to authenticate).
+
+---
+
+## Two-factor authentication (2FA)
+
+Accounts protected by email-code 2FA are fully supported. After installing the plugin, open **Plugin Settings** in the Homebridge UI and click **Start Login**. The plugin walks you through a secure PKCE OAuth flow using the official Hubspace iOS client — no credentials are sent anywhere except Hubspace's own servers.
+
+- **No 2FA on your account?** Login completes automatically after you enter your username and password — no extra steps.
+- **2FA enabled?** You'll be prompted to enter the one-time code from your email before the session is saved.
+
+Authentication is cached so you only need to log in once. If the cache expires or is deleted, open Plugin Settings to log in again.
 
 ---
 
@@ -87,7 +99,7 @@ Minimal `config.json` entry under `"platforms"`:
 | `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
-| `pollingInterval` | integer | `300` | Fallback poll interval in seconds. When Conclave is active (the default), real-time updates arrive instantly and values below 300 s are ignored. Only relevant if Conclave is disabled. |
+| `pollingInterval` | integer | `30` | How often (in seconds) to poll all device states. Minimum 10 s, maximum 600 s. Lower values give faster reflection of changes made in the Hubspace app. |
 | `debug` | boolean | `false` | Log API/network activity: GET STATE, SET STATE, token refresh, Conclave details. Also dumps raw capabilities when an unsupported device is skipped. See also `verbose`. |
 | `verbose` | boolean | `false` | Log full device state on every poll cycle (noisy). Implies `debug`. Use this when [requesting support for a new device](#requesting-support-for-a-new-device). |
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
@@ -101,17 +113,18 @@ Minimal `config.json` entry under `"platforms"`:
 
 ## Real-time push (Conclave)
 
-Starting in 1.2.0 the plugin connects to the Afero Conclave push service alongside regular polling. When another app (or the Hubspace app itself) changes a device, the plugin receives an `attr_change` event within a second and fetches only that device's state — without waiting for the next poll cycle. The slow-poll fallback still runs at your configured `pollingInterval` (minimum 300 s when Conclave is active) as a safety net.
+The plugin maintains a persistent connection to the Afero Conclave push service. State changes — whether triggered from HomeKit or from the Hubspace app — are reflected in HomeKit within ~500 ms without waiting for a poll cycle. Regular polling (default every 30 s) runs in the background as a fallback for devices that don't emit push events.
 
-No configuration is required — Conclave is on by default. Set `"disableConclave": true` to fall back to polling-only mode.
+No configuration is required — Conclave is on by default. Set `"disableConclave": true` to fall back to polling only.
 
 ---
 
 ## Troubleshooting
 
-**Authentication failed**
-- Check your username and password in the Homebridge config.
-- Confirm you can log into the Hubspace app on your phone.
+**Authentication failed / 2FA not working**
+- Open **Plugin Settings** in Homebridge UI and use the **Start Login** button — this is the recommended way to authenticate, especially for 2FA accounts.
+- Confirm your username and password work in the Hubspace app on your phone.
+- If login previously worked but stopped, delete `<homebridge-storage>/hubspace-tokens.json` and log in again via Plugin Settings.
 
 **Accessories show as `No Response`**
 - Check Homebridge logs for `[Hubspace]` error lines.
@@ -124,8 +137,6 @@ No configuration is required — Conclave is on by default. Set `"disableConclav
 **Device appears but a characteristic is wrong**
 - Enable `"verbose": true` and restart Homebridge. Every poll cycle will print a `State for "..."` line with every capability and value the API returned. Paste that line in a GitHub issue along with a description of what HomeKit shows vs. what you expect.
 
-**Token cache corruption**
-- Delete `<homebridge-storage>/hubspace-tokens.json` and restart. The plugin will re-authenticate once.
 
 ---
 
