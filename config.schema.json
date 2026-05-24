@@ -32,7 +32,7 @@
         "default": 300,
         "minimum": 10,
         "maximum": 600,
-        "description": "How often to poll device state. When Conclave push is active (the default), real-time updates arrive instantly and this is only a fallback — values below 300 s are ignored. Set lower only if Conclave is disabled."
+        "description": "How often to poll device state as a fallback (10–600 s). When Conclave push is active (the default), real-time updates arrive instantly and polling is rarely needed — leave at 300 s unless Conclave is disabled."
       },
       "tokenCachePath": {
         "title": "Token Cache Path (advanced)",
@@ -43,7 +43,7 @@
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log API call activity: GET STATE, SET STATE, token refresh, Conclave connection details. Also dumps raw capabilities when an unsupported device is skipped."
+        "description": "Log internal plugin activity: API calls (GET/SET STATE, token refresh), Conclave push details (quick-polls, device ID resolution, hub sweeps), and raw capabilities when an unsupported device is skipped."
       },
       "verbose": {
         "title": "Enable Verbose Logging",

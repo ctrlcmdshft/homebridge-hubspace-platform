@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.2] - 2026-05-24
+
+### Improvements
+
+- **Structured log categories** — log output is now tagged by subsystem so related messages are easy to scan at a glance: `[Auth]` for token load, login, and refresh activity; `[Conclave]` for push connection details and events; `[Device]` for per-accessory status messages; `[Poll]` for polling cycle results and failures
+- **Conclave log noise reduced** — quick-poll triggers, full hub sweeps, and device ID resolution messages (`Resolved abc123 → "Device Name"`) are now hidden behind the `debug` flag; normal logs only show Conclave startup details and genuine warnings
+
+### Bug Fixes
+
+- **Silent debug gate** — two log gates in the polling cycle referenced `this.config.debug` (which doesn't exist) instead of `this.debug`; those messages were never emitted even with `debug: true` enabled; fixed
+- **Unsupported device warning alignment** — `Hardware` and `Capabilities` labels in the unsupported-device skip warning now column-align correctly
+
+### Config
+
+- **`pollingInterval` description corrected** — removed the false claim that "values below 300 s are ignored when Conclave is active"; the field accepts 10–600 s regardless of Conclave state
+- **`debug` description updated** — now accurately describes what is logged: API calls (GET/SET STATE, token refresh), Conclave push details (quick-polls, device ID resolution, hub sweeps), and raw capability dumps for unsupported devices
+
+---
+
 ## [2.0.1] - 2026-05-23
 
 This is the first release with two-factor authentication support. The custom login UI, Conclave real-time push overhaul, and fan rotation direction are the headline changes. All alpha versions (2.0.1-alpha.1 through alpha.7) have been unpublished.

@@ -1,3 +1,15 @@
+import type { Logger } from 'homebridge';
+
+/** Wraps a Homebridge Logger and prepends [prefix] to info/warn/error messages. */
+export function createLogger(base: Logger, prefix: string): Logger {
+  const tag = `[${prefix}]`;
+  const wrapped = Object.create(base) as Logger;
+  wrapped.info  = (msg: string, ...a: unknown[]) => base.info(`${tag} ${msg}`, ...a);
+  wrapped.warn  = (msg: string, ...a: unknown[]) => base.warn(`${tag} ${msg}`, ...a);
+  wrapped.error = (msg: string, ...a: unknown[]) => base.error(`${tag} ${msg}`, ...a);
+  return wrapped;
+}
+
 /** HSV → RGB. h: 0–360, s: 0–100, v: 0–100. Returns [r, g, b] each 0–255. */
 export function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
   s /= 100;

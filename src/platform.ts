@@ -9,6 +9,7 @@ import {
 } from 'homebridge';
 import { PLUGIN_NAME, PLATFORM_NAME, HubspaceConfig, SUPPORTED_DEVICE_CLASSES } from './types';
 import { HubspaceClient } from './hubspace-client';
+import { createLogger } from './utils';
 import { BaseHubspaceAccessory, FanAccessory, createAccessory } from './accessory';
 import type { HubspaceAccessoryContext } from './accessory';
 
@@ -35,6 +36,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   /** Cache: Conclave BLE-MAC-based device ID → metadevice UUID. */
   private readonly conclaveIdMap = new Map<string, string>();
   private readonly cfg: HubspaceConfig;
+  private readonly conclaveLog: Logger;
+  private readonly pollLog: Logger;
 
   constructor(
     public readonly log: Logger,
@@ -48,6 +51,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.verbose = this.cfg.verbose ?? false;
     this.exposeStatusFault = this.cfg.exposeStatusFault ?? false;
     this.invertOutletStatus = this.cfg.invertOutletStatus ?? false;
+    this.conclaveLog = createLogger(this.log, 'Conclave');
+    this.pollLog = createLogger(this.log, 'Poll');
 
     if (!this.cfg.username || !this.cfg.password) {
       this.log.warn(
@@ -112,7 +117,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
           (deviceId) => this.scheduleQuickPoll(deviceId, 500),
           () => this.scheduleFullSweep(1_000),
         );
-        this.log.info('Conclave push connection started.');
+        this.conclaveLog.info('Push connection started.');
       }
       this.startPolling();
     } catch (err) {
@@ -149,8 +154,8 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         const mfr = [device.manufacturerName, device.model].filter(Boolean).join(' / ') || 'unknown';
         this.log.warn(
           `Unsupported deviceClass "${device.deviceClass}" — "${device.friendlyName}" will not appear in HomeKit.\n` +
-          `  Hardware : ${mfr}\n` +
-          `  Capabilities: ${caps}\n` +
+          `  Hardware     : ${mfr}\n` +
+          `  Capabilities : ${caps}\n` +
           `  To request support: https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues`,
         );
         if (this.debug) {
@@ -264,7 +269,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       // gateway. Hub events mean hub-connected lights may have changed availability,
       // so trigger a full sweep so they pick up available=false quickly.
       if (/^[0-9a-f]{16}$/i.test(conclaveId)) {
-        this.log.debug(`[Conclave] Unresolved device ${conclaveId} — scheduling full sweep.`);
+        this.conclaveLog.debug(`Unresolved device ${conclaveId} — scheduling full sweep.`);
         this.scheduleFullSweep(delayMs);
       }
       return;
@@ -276,7 +281,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       this.pendingQuickPolls.delete(metadeviceId);
       const handler = this.handlers.get(metadeviceId);
       if (!handler) return;
-      this.log.info(`[Conclave] Quick-poll → "${handler.device.friendlyName}"`);
+      if (this.debug) this.conclaveLog.info(`Quick-poll → "${handler.device.friendlyName}"`);
       const allIds = handler.device.allIds ?? [metadeviceId];
       this.client.getDeviceState(allIds)
         .then(values => handler.updateState(values))
@@ -289,7 +294,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.pendingQuickPolls.add('__sweep__');
     setTimeout(() => {
       this.pendingQuickPolls.delete('__sweep__');
-      this.log.info('[Conclave] Full sweep triggered by hub event.');
+      if (this.debug) this.conclaveLog.info('Full sweep triggered by hub event.');
       this.pollDevices();
     }, delayMs);
   }
@@ -313,13 +318,13 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         ?.value;
       if (typeof bleMac === 'string' && bleMac.toLowerCase().replace(/:/g, '') === macSuffix) {
         this.conclaveIdMap.set(conclaveId, metadeviceId);
-        this.log.info(`[Conclave] Resolved ${conclaveId} → "${handler.device.friendlyName}"`);
+        if (this.debug) this.conclaveLog.info(`Resolved ${conclaveId} → "${handler.device.friendlyName}"`);
         return metadeviceId;
       }
     }
 
     if (this.debug && /^[0-9a-f]{16}$/i.test(conclaveId)) {
-      this.log.info(`[Conclave] No BLE-MAC match for ${conclaveId} — treating as hub/gateway.`);
+      this.conclaveLog.info(`No BLE-MAC match for ${conclaveId} — treating as hub/gateway.`);
     }
     return undefined;
   }
@@ -346,20 +351,20 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         handler.markPollFailed();
         if (this.consecutiveFailCycles < 3) {
           const [deviceId] = entries[i];
-          this.log.warn(`Poll failed for ${deviceId}: ${r.reason}`);
+          this.pollLog.warn(`Failed for ${deviceId}: ${r.reason}`);
         }
       }
     });
     if (failCount > 0) {
       this.consecutiveFailCycles++;
       if (this.consecutiveFailCycles === 3) {
-        this.log.warn(`API appears unreachable — suppressing repeated poll errors. Will log again when recovered.`);
+        this.pollLog.warn('API appears unreachable — suppressing repeated errors. Will log again when recovered.');
       } else if (this.consecutiveFailCycles < 3) {
-        this.log.warn(`${failCount} device(s) failed to poll this cycle.`);
+        this.pollLog.warn(`${failCount} device(s) failed this cycle.`);
       }
     } else {
       if (this.consecutiveFailCycles >= 3) {
-        this.log.info(`API reachable again after ${this.consecutiveFailCycles} failed cycles.`);
+        this.pollLog.info(`API reachable again after ${this.consecutiveFailCycles} failed cycles.`);
       }
       this.consecutiveFailCycles = 0;
     }

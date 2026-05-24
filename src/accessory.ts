@@ -9,6 +9,7 @@ import { isAxiosError } from 'axios';
 import type { HubspacePlatform } from './platform';
 import { HubspaceDevice, DeviceStateValue, FC, HubspaceAccessoryContext } from './types';
 import {
+  createLogger,
   hsvToRgb,
   rgbToHsv,
   parseColorRgb,
@@ -40,7 +41,7 @@ export abstract class BaseHubspaceAccessory {
     protected readonly accessory: PlatformAccessory,
     public device: HubspaceDevice,
   ) {
-    this.log = platform.log;
+    this.log = createLogger(platform.log, 'Device');
     this.rebuildStateMap(device.values);
     this.setupAccessoryInfo();
     this.setupServices();

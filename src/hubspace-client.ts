@@ -6,6 +6,7 @@ import * as zlib from 'zlib';
 import * as crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { Logger } from 'homebridge';
+import { createLogger } from './utils';
 import {
   AuthTokens,
   KeycloakTokenResponse,
@@ -40,6 +41,8 @@ export class HubspaceClient {
   /** Prevents concurrent password logins. */
   private authInFlight: Promise<void> | null = null;
   private readonly debug: boolean;
+  private readonly authLog: Logger;
+  private readonly conclaveLog: Logger;
 
   constructor(
     private readonly username: string,
@@ -49,6 +52,8 @@ export class HubspaceClient {
     options: { tokenCachePath?: string; debug?: boolean } = {},
   ) {
     this.debug = options.debug ?? false;
+    this.authLog = createLogger(log, 'Auth');
+    this.conclaveLog = createLogger(log, 'Conclave');
     this.tokenCachePath =
       options.tokenCachePath ?? path.join(storagePath, 'hubspace-tokens.json');
 
@@ -99,7 +104,7 @@ export class HubspaceClient {
   startConclave(onDeviceChange: (deviceId: string) => void, onClientJoin?: () => void): void {
     const accountId = this.accountId;
     if (!accountId) {
-      this.log.warn('[Conclave] accountId not yet resolved — Conclave will not start.');
+      this.conclaveLog.warn('accountId not yet resolved — Conclave will not start.');
       return;
     }
     const mobileDeviceId = this.getOrCreateMobileDeviceId();
@@ -108,7 +113,7 @@ export class HubspaceClient {
       mobileDeviceId,
       () => this.fetchConclaveToken(),
       onDeviceChange,
-      this.log,
+      this.conclaveLog,
       this.debug,
       onClientJoin,
     );
@@ -154,7 +159,7 @@ export class HubspaceClient {
     const host = conclaveInfo?.host ?? CONCLAVE_HOST;
     const compression = conclaveInfo?.compression ?? false;
 
-    this.log.info(`[Conclave] Server: ${host}, compression: ${compression}, channelId: ${channelId ?? '(none — using accountId)'}, token expires in ${expiresIn}s`);
+    this.conclaveLog.info(`Server: ${host}, compression: ${compression}, channelId: ${channelId ?? '(none — using accountId)'}, token expires in ${expiresIn}s`);
 
     return { token, channelId, expiresIn, host, compression };
   }
@@ -173,13 +178,13 @@ export class HubspaceClient {
     await this.loadCachedTokens();
 
     if (this.tokens && this.isRefreshTokenValid()) {
-      this.log.info('Loaded cached tokens — skipping login.');
+      this.authLog.info('Loaded cached tokens — skipping login.');
       if (this.isAccessTokenExpired()) {
         this.log.debug('Access token near expiry; refreshing…');
         await this.doRefresh();
       }
     } else {
-      this.log.info('No valid cached tokens — authenticating…');
+      this.authLog.info('No valid cached tokens — authenticating…');
       await this.authenticate();
     }
 
@@ -323,7 +328,7 @@ export class HubspaceClient {
       );
     }
 
-    this.log.info(`Account ID resolved: ${accountId}`);
+    this.authLog.info(`Account ID resolved: ${accountId}`);
     this.accountId = accountId;
     return accountId;
   }
@@ -337,7 +342,7 @@ export class HubspaceClient {
   }
 
   private async _doAuthenticate(): Promise<void> {
-    this.log.info('Authenticating with username/password…');
+    this.authLog.info('Authenticating with username/password…');
     const params = new URLSearchParams({
       grant_type: 'password',
       client_id: CLIENT_ID,
@@ -363,12 +368,12 @@ export class HubspaceClient {
     } catch (err) {
       const msg = this.extractErrorMessage(err);
       if (/mfa|otp|two.factor|multi.factor|email.*code|authenticat/i.test(msg)) {
-        this.log.warn(
+        this.authLog.warn(
           `Authentication failed: ${msg}\n` +
           'Your account has 2FA enabled. Open the plugin settings in the Homebridge UI to complete the login flow.',
         );
       } else {
-        this.log.warn(`Authentication failed: ${msg}`);
+        this.authLog.warn(`Authentication failed: ${msg}`);
       }
       throw new Error(`Authentication failed: ${msg}`);
     }
@@ -376,7 +381,7 @@ export class HubspaceClient {
     if (data.error) {
       const msg = `${data.error} — ${data.error_description ?? ''}`;
       if (/mfa|otp|two.factor|multi.factor|email.*code|authenticat/i.test(msg)) {
-        this.log.warn(
+        this.authLog.warn(
           `Auth error: ${msg}\n` +
           'Your account has 2FA enabled. Open the plugin settings in the Homebridge UI to complete the login flow.',
         );
@@ -386,7 +391,7 @@ export class HubspaceClient {
 
     this.storeTokens(data);
     await this.saveCachedTokens();
-    this.log.info(
+    this.authLog.info(
       `Authentication successful — access token expires in ${data.expires_in}s, ` +
       `refresh token expires in ${Math.round(data.refresh_expires_in / 60)}m.`,
     );
@@ -426,7 +431,7 @@ export class HubspaceClient {
         await this.saveCachedTokens();
         this.log.debug('Token refresh successful.');
       } catch (err) {
-        this.log.warn(
+        this.authLog.warn(
           `Token refresh failed: ${this.extractErrorMessage(err)} — will re-authenticate.`,
         );
         throw err;
@@ -481,7 +486,7 @@ export class HubspaceClient {
       const raw = await fs.readFile(this.tokenCachePath, 'utf-8');
       const cached = JSON.parse(raw) as AuthTokens;
       if (cached.username && cached.username !== this.username) {
-        this.log.info('Cached tokens belong to a different account — discarding.');
+        this.authLog.info('Cached tokens belong to a different account — discarding.');
         await fs.unlink(this.tokenCachePath);
         return;
       }
@@ -503,7 +508,7 @@ export class HubspaceClient {
       await fs.writeFile(tmp, JSON.stringify(this.tokens, null, 2), 'utf-8');
       await fs.rename(tmp, this.tokenCachePath);
     } catch (err) {
-      this.log.warn(`Could not save token cache: ${err}`);
+      this.authLog.warn(`Could not save token cache: ${err}`);
     }
   }
 
@@ -607,7 +612,7 @@ class ConclaveClient extends EventEmitter {
         this.openSocket(token, channelId, expiresIn, host, compression);
       })
       .catch((err) => {
-        this.log.warn(`[Conclave] Token fetch failed: ${err} — will retry.`);
+        this.log.warn(`Token fetch failed: ${err} — will retry.`);
         this.scheduleReconnect();
       });
   }
@@ -658,7 +663,7 @@ class ConclaveClient extends EventEmitter {
       inflate.once('error', (err) => {
         // Guard: if this socket is already torn down, the error is just EOF cleanup noise.
         if (this.socket !== socket) return;
-        this.log.warn(`[Conclave] Inflate error: ${err.message}`);
+        this.log.warn(`Inflate error: ${err.message}`);
         this.teardown();
         this.scheduleReconnect();
       });
@@ -675,7 +680,7 @@ class ConclaveClient extends EventEmitter {
     }
 
     socket.once('error', (err) => {
-      this.log.warn(`[Conclave] Socket error: ${err.message}`);
+      this.log.warn(`Socket error: ${err.message}`);
       this.teardown();
       this.scheduleReconnect();
     });
@@ -684,7 +689,7 @@ class ConclaveClient extends EventEmitter {
       // Only reconnect for unexpected closes. Intentional teardown nulls this.socket
       // before calling destroy(), so this.socket !== socket in that case.
       if (!this.destroyed && this.socket === socket) {
-        this.log.warn('[Conclave] Connection closed — reconnecting.');
+        this.log.warn('Connection closed — reconnecting.');
         this.teardown();
         this.scheduleReconnect();
       }
@@ -722,7 +727,7 @@ class ConclaveClient extends EventEmitter {
     if (isDeviceEvent(envelope)) {
       const msg = envelope.public ?? envelope.private!;
       const { event, data } = msg;
-      this.dbg(`[Conclave] event: ${event}, id: ${data?.id ?? 'none'}`);
+      this.dbg(`event: ${event}, id: ${data?.id ?? 'none'}`);
       if (event === 'attr_change' || event === 'status_change') {
         const deviceId = data?.id;
         if (typeof deviceId === 'string' && deviceId.length > 0) {
@@ -747,7 +752,7 @@ class ConclaveClient extends EventEmitter {
       return; // server capability announcement — already processed via hello/welcome
     }
 
-    this.dbg(`[Conclave] unrecognised envelope: ${line.slice(0, 200)}`);
+    this.dbg(`unrecognised envelope: ${line.slice(0, 200)}`);
   }
 
   private sendLogin(conclaveToken: string, channelId: string | undefined): void {
@@ -835,6 +840,6 @@ class ConclaveClient extends EventEmitter {
   }
 
   private dbg(...args: unknown[]): void {
-    if (this.debug) this.log.info('[Conclave]', ...args.map(String));
+    if (this.debug) this.log.info(args.map(String).join(' '));
   }
 }
