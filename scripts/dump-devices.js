@@ -15,11 +15,16 @@
 
 'use strict';
 
+const crypto = require('crypto');
+const https = require('https');
 const readline = require('readline');
 
-const AUTH_URL = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
+const AUTH_ENDPOINT = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/auth';
+const TOKEN_ENDPOINT = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
 const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
+const IOS_CLIENT = 'hubspace_ios';
+const REDIRECT_URI = 'hubspace-app://loginredirect';
 
 async function promptVisible(label) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -57,21 +62,147 @@ async function promptPassword(label) {
   });
 }
 
-async function getToken(username, password) {
+// ─── HTTP helpers (manual redirect control needed for auth flow) ──────────────
+
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.get({
+      hostname: u.hostname, port: 443, path: u.pathname + u.search,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      timeout: 15000,
+    }, (res) => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out.')); });
+    req.on('error', reject);
+  });
+}
+
+function httpPost(url, body, cookieMap) {
+  const cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({
+      hostname: u.hostname, port: 443, path: u.pathname + u.search, method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+        'User-Agent': 'Mozilla/5.0',
+        ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
+      },
+      timeout: 15000,
+    }, (res) => {
+      let resBody = '';
+      res.on('data', d => resBody += d);
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: resBody }));
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out.')); });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function parseCookies(setCookieHeaders) {
+  const map = {};
+  for (const h of setCookieHeaders ?? []) {
+    const pair = h.split(';')[0].trim();
+    const eq = pair.indexOf('=');
+    if (eq > 0) map[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+  return map;
+}
+
+function extractFormAction(html) {
+  const m = html?.match(/action="([^"]+)"/);
+  return m ? m[1].replace(/&amp;/g, '&') : null;
+}
+
+function extractCode(location) {
+  try {
+    const url = new URL(location.replace('hubspace-app://', 'https://hubspace-app/'));
+    const code = url.searchParams.get('code');
+    if (!code) throw new Error('No code in redirect');
+    return code;
+  } catch {
+    const m = location.match(/[?&]code=([^&]+)/);
+    if (!m) throw new Error('Could not extract authorization code from redirect.');
+    return m[1];
+  }
+}
+
+function isOtpPage(html) {
+  return !!(html?.includes('emailCode') || html?.includes('otp-input') || html?.includes('kc-otp-login-form'));
+}
+
+// ─── PKCE auth flow — supports both non-2FA and 2FA accounts ─────────────────
+
+async function exchangeCode(code, verifier) {
   const body = new URLSearchParams({
-    grant_type: 'password',
-    client_id: 'hubspace_android',
-    username,
-    password,
-  });
-  const res = await fetch(AUTH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-  if (!res.ok) throw new Error(`Auth failed: ${res.status} ${res.statusText}`);
-  const data = await res.json();
+    grant_type: 'authorization_code', client_id: IOS_CLIENT,
+    code, redirect_uri: REDIRECT_URI, code_verifier: verifier,
+  }).toString();
+  const r = await httpPost(TOKEN_ENDPOINT, body, {});
+  const data = JSON.parse(r.body);
+  if (data.error) throw new Error(`Token exchange failed: ${data.error_description ?? data.error}`);
   return data.access_token;
+}
+
+async function getToken(username, password) {
+  const verifier = crypto.randomBytes(96).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+
+  const params = new URLSearchParams({
+    client_id: IOS_CLIENT, response_type: 'code',
+    redirect_uri: REDIRECT_URI, scope: 'openid offline_access',
+    code_challenge: challenge, code_challenge_method: 'S256',
+  });
+  const r1 = await httpGet(AUTH_ENDPOINT + '?' + params);
+  const cookies = parseCookies(r1.headers['set-cookie']);
+  const action = extractFormAction(r1.body);
+  if (!action) throw new Error('Could not parse Hubspace login page. Please try again.');
+
+  const credBody = new URLSearchParams({ username, password }).toString();
+  const r2 = await httpPost(action, credBody, cookies);
+
+  if (r2.status === 302 && r2.headers['location']?.startsWith('hubspace-app://')) {
+    return exchangeCode(extractCode(r2.headers['location']), verifier);
+  }
+
+  if (r2.status === 200 && isOtpPage(r2.body)) {
+    const otpAction = extractFormAction(r2.body);
+    if (!otpAction) throw new Error('Could not parse 2FA page. Please try again.');
+    const cookies2 = { ...cookies, ...parseCookies(r2.headers['set-cookie']) };
+
+    process.stdout.write('\n');
+    console.log('2FA required — check your email for a 6-digit code.');
+    const code6 = await promptVisible('Enter 6-digit code: ');
+    if (!/^\d{6}$/.test(code6.trim())) throw new Error('Invalid code — must be exactly 6 digits.');
+
+    const otpBody = new URLSearchParams({
+      action: 'submit', flowName: 'doLogIn', emailCode: code6.trim(),
+    }).toString();
+    const r3 = await httpPost(otpAction, otpBody, cookies2);
+
+    if (r3.status === 302 && r3.headers['location']?.startsWith('hubspace-app://')) {
+      return exchangeCode(extractCode(r3.headers['location']), verifier);
+    }
+
+    if (r3.status === 200 && isOtpPage(r3.body)) {
+      throw new Error('Incorrect or expired code. Check your email and try again.');
+    }
+
+    throw new Error(`Unexpected response (HTTP ${r3.status}) after 2FA.`);
+  }
+
+  if (r2.body?.includes('Invalid username or password') || r2.body?.includes('login-error')) {
+    throw new Error('Invalid username or password.');
+  }
+
+  throw new Error(`Unexpected response from Hubspace (HTTP ${r2.status}).`);
 }
 
 async function getAccountId(token) {
@@ -112,8 +243,9 @@ const PRIVATE_FIELDS = new Set([
 
   process.stdout.write('\nAuthenticating...');
   const token = await getToken(username, password);
+  process.stdout.write(' done\n');
   const accountId = await getAccountId(token);
-  console.log(' done\n');
+  console.log();
 
   const raw = await getDevices(token, accountId);
   const devices = raw.filter(d => d.typeId === 'metadevice.device' && d.description?.device?.deviceClass);
