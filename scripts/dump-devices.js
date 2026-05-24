@@ -15,36 +15,23 @@
 
 'use strict';
 
+const readline = require('readline');
+
 const AUTH_URL = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
 const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
 
-// Prompt without echoing input — keeps credentials out of terminal history and copy-paste output.
+// Prompt without echoing input — keeps credentials out of terminal copy-paste output.
 async function promptHidden(label) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl._writeToOutput = () => {};
   process.stdout.write(label);
-  if (process.stdin.setRawMode) {
-    process.stdin.setRawMode(true);
-  }
-  process.stdin.resume();
-  process.stdin.setEncoding('utf8');
   return new Promise(resolve => {
-    let input = '';
-    const onData = (ch) => {
-      if (ch === '\n' || ch === '\r' || ch === '') {
-        if (process.stdin.setRawMode) process.stdin.setRawMode(false);
-        process.stdin.removeListener('data', onData);
-        process.stdin.pause();
-        process.stdout.write('\n');
-        resolve(input);
-      } else if (ch === '') {
-        process.exit();
-      } else if (ch === '' || ch === '\b') {
-        input = input.slice(0, -1);
-      } else {
-        input += ch;
-      }
-    };
-    process.stdin.on('data', onData);
+    rl.question('', answer => {
+      rl.close();
+      process.stdout.write('\n');
+      resolve(answer.trim());
+    });
   });
 }
 
@@ -96,7 +83,7 @@ const PRIVATE_FIELDS = new Set([
 
 (async () => {
   console.log('Hubspace Device Capability Dumper');
-  console.log('──────────────────────────────────\n');
+  console.log('----------------------------------\n');
 
   const username = process.env.USERNAME || await promptHidden('Hubspace email: ');
   const password = process.env.PASSWORD || await promptHidden('Hubspace password: ');
@@ -116,7 +103,7 @@ const PRIVATE_FIELDS = new Set([
     const values = d.state?.values ?? [];
     const caps = [...new Set(values.map(v => v.functionClass))].join(', ') || 'none';
 
-    console.log(`━━━ ${d.friendlyName || desc.defaultName || d.id}`);
+    console.log(`--- ${d.friendlyName || desc.defaultName || d.id}`);
     console.log(`    deviceClass  : ${desc.deviceClass}`);
     console.log(`    hardware     : ${[desc.manufacturerName, desc.model].filter(Boolean).join(' / ') || 'unknown'}`);
     console.log(`    capabilities : ${caps}`);
@@ -132,7 +119,7 @@ const PRIVATE_FIELDS = new Set([
     console.log();
   }
 
-  console.log('── Paste the output above into your GitHub issue ──');
+  console.log('-- Paste the output above into your GitHub issue --');
 })().catch(err => {
   console.error('\nError:', err.message);
   process.exit(1);
