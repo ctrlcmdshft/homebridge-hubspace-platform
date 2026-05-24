@@ -141,9 +141,13 @@ export abstract class BaseHubspaceAccessory {
   }
 
   protected getStatusFault(): CharacteristicValue {
-    return this.offline
-      ? this.platform.Characteristic.StatusFault.GENERAL_FAULT
-      : this.platform.Characteristic.StatusFault.NO_FAULT;
+    if (this.offline) return this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+    for (const [key, v] of this.stateMap) {
+      if (key.startsWith('error-flag:') && v.value === true) {
+        return this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+      }
+    }
+    return this.platform.Characteristic.StatusFault.NO_FAULT;
   }
 
   // ── Abstract interface ────────────────────────────────────────────────────────

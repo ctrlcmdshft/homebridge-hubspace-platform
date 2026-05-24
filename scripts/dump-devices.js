@@ -108,6 +108,10 @@ async function getDevices(token, accountId) {
 
   console.log(`Found ${devices.length} device(s):\n`);
 
+  const PRIVATE_FIELDS = new Set([
+    'geo-coordinates', 'wifi-ssid', 'wifi-mac-address', 'ble-mac-address',
+  ]);
+
   for (const d of devices) {
     const desc = d.description?.device ?? {};
     const values = d.state?.values ?? [];
@@ -119,6 +123,10 @@ async function getDevices(token, accountId) {
     console.log(`    capabilities : ${caps}`);
     console.log(`    values:`);
     for (const v of values) {
+      if (PRIVATE_FIELDS.has(v.functionClass)) {
+        console.log(`      ${v.functionClass}[${v.functionInstance ?? 'default'}] = [redacted]`);
+        continue;
+      }
       const val = typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value ?? '');
       console.log(`      ${v.functionClass}[${v.functionInstance ?? 'default'}] = ${val}`);
     }

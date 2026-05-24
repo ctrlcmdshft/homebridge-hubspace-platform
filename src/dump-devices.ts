@@ -42,8 +42,15 @@ const log: Logger = {
     if (d.manufacturerName || d.model) {
       console.log(`    hardware    : ${[d.manufacturerName, d.model].filter(Boolean).join(' / ')}`);
     }
+    const PRIVATE_FIELDS = new Set([
+      'geo-coordinates', 'wifi-ssid', 'wifi-mac-address', 'ble-mac-address',
+    ]);
     console.log(`    capabilities:`);
     for (const v of d.values) {
+      if (PRIVATE_FIELDS.has(v.functionClass)) {
+        console.log(`      ${v.functionClass}[${v.functionInstance ?? 'default'}] = [redacted]`);
+        continue;
+      }
       const val = typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value);
       console.log(`      ${v.functionClass}[${v.functionInstance ?? 'default'}] = ${val}`);
     }

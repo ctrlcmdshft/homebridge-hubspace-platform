@@ -159,7 +159,11 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
           `  To request support: https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues`,
         );
         if (this.debug) {
+          const PRIVATE_FIELDS = new Set([
+            'geo-coordinates', 'wifi-ssid', 'wifi-mac-address', 'ble-mac-address',
+          ]);
           for (const v of device.values) {
+            if (PRIVATE_FIELDS.has(v.functionClass)) continue;
             this.log.info(
               `  [debug] ${v.functionClass}[${v.functionInstance ?? 'undefined'}] = ${JSON.stringify(v.value)}`,
             );
