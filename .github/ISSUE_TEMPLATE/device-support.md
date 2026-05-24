@@ -1,7 +1,7 @@
 ---
 name: Request device support
 about: Your Hubspace device isn't appearing in HomeKit
-title: "Device support: <deviceClass> — <friendly name>"
+title: "Device support: <device name / model>"
 labels: device-support
 assignees: ''
 ---
@@ -12,24 +12,38 @@ assignees: ''
 
 **Model / SKU (from the box or Hubspace app):**
 
-## Unsupported deviceClass warning
+**Where to buy (Home Depot link if available):**
 
-Enable `"verbose": true` in your Homebridge config, restart, and paste the full warning block here:
+## Capability dump
+
+Choose **one** of the following methods and paste the output below.
+
+**Option A — Standalone script** (easiest, no Homebridge restart needed):
+
+```bash
+node -e "$(curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js)"
+```
+
+Prompts for your Hubspace email and password, then prints all your devices and their capabilities.
+
+**Option B — Homebridge debug log:**
+
+Add `"debug": true` to the plugin config in Homebridge, restart, and paste the warning block that appears for your device:
 
 ```
 [WARN] Unsupported deviceClass "..." — "..." will not appear in HomeKit.
   Hardware     : ...
   Capabilities : ...
+  [debug] functionClass[instance] = value
+  ...
 ```
 
-## State dump
-
-Paste the `State for "..."` line that appears in the log after the warning:
+---
 
 ```
-[Hubspace] State for "...": ...
+paste output here
 ```
 
 ## Additional context
 
-Anything else that might help — Homebridge version, how the device behaves in the Hubspace app, etc.
+Anything else that might help — how the device behaves in the Hubspace app, firmware version, etc.
