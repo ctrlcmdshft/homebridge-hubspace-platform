@@ -11,6 +11,7 @@ coverage/
 
 # Dev/CI
 .github/
+scripts/
 .claude/
 *.local.json
 package-lock.json
