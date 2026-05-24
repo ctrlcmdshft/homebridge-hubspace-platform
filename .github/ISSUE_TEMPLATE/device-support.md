@@ -21,7 +21,7 @@ Choose **one** of the following methods and paste the output below.
 **Option A — Standalone script** (easiest, no Homebridge restart needed):
 
 ```bash
-node -e "$(curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js)"
+curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js -o /tmp/hubspace-dump.js && node /tmp/hubspace-dump.js
 ```
 
 Prompts for your Hubspace email and password, then prints all your devices and their capabilities.

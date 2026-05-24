@@ -149,7 +149,7 @@ If your Hubspace device doesn't appear in HomeKit, the plugin has skipped it bec
 Run this one-liner on any machine with Node.js 18+ (the same machine running Homebridge works fine):
 
 ```bash
-node -e "$(curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js)"
+curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js -o /tmp/hubspace-dump.js && node /tmp/hubspace-dump.js
 ```
 
 It prompts for your Hubspace email and password, then prints every device on your account with its full capability list. No Homebridge restart needed.

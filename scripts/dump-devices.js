@@ -9,8 +9,8 @@
  * Usage:
  *   node dump-devices.js
  *
- * Or one-liner (no download):
- *   node -e "$(curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js)"
+ * Or one-liner:
+ *   curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js -o /tmp/hubspace-dump.js && node /tmp/hubspace-dump.js
  */
 
 'use strict';
