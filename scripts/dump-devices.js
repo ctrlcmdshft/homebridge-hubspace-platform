@@ -95,7 +95,7 @@ const PRIVATE_FIELDS = new Set([
   console.log('----------------------------------\n');
 
   const username = process.env.USERNAME || await promptVisible('Hubspace email: ');
-  const password = process.env.PASSWORD || await promptPassword('Hubspace password (hidden): ');
+  const password = process.env.PASSWORD || await promptPassword('Hubspace password (type then press Enter, nothing will show): ');
 
   process.stdout.write('\nAuthenticating...');
   const token = await getToken(username, password);
