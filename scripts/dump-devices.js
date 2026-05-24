@@ -21,8 +21,18 @@ const AUTH_URL = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/
 const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
 
-// Prompt without echoing input — keeps credentials out of terminal copy-paste output.
-async function promptHidden(label) {
+async function promptVisible(label) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => {
+    rl.question(label, answer => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+// Password only — suppresses echo so it doesn't appear in copy-paste output.
+async function promptPassword(label) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   rl._writeToOutput = () => {};
   process.stdout.write(label);
@@ -85,8 +95,8 @@ const PRIVATE_FIELDS = new Set([
   console.log('Hubspace Device Capability Dumper');
   console.log('----------------------------------\n');
 
-  const username = process.env.USERNAME || await promptHidden('Hubspace email: ');
-  const password = process.env.PASSWORD || await promptHidden('Hubspace password: ');
+  const username = process.env.USERNAME || await promptVisible('Hubspace email: ');
+  const password = process.env.PASSWORD || await promptPassword('Hubspace password (hidden): ');
 
   process.stdout.write('\nAuthenticating...');
   const token = await getToken(username, password);
