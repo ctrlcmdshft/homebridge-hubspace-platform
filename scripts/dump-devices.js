@@ -15,38 +15,37 @@
 
 'use strict';
 
-const readline = require('readline');
-
 const AUTH_URL = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
 const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
 
-async function prompt(question, hidden = false) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  if (hidden) {
-    process.stdout.write(question);
-    process.stdin.setRawMode?.(true);
-    return new Promise(resolve => {
-      let input = '';
-      process.stdin.resume();
-      process.stdin.setEncoding('utf8');
-      const onData = (ch) => {
-        if (ch === '\n' || ch === '\r') {
-          process.stdin.setRawMode?.(false);
-          process.stdin.removeListener('data', onData);
-          rl.close();
-          process.stdout.write('\n');
-          resolve(input);
-        } else if (ch === '') {
-          process.exit();
-        } else {
-          input += ch;
-        }
-      };
-      process.stdin.on('data', onData);
-    });
+// Prompt without echoing input — keeps credentials out of terminal history and copy-paste output.
+async function promptHidden(label) {
+  process.stdout.write(label);
+  if (process.stdin.setRawMode) {
+    process.stdin.setRawMode(true);
   }
-  return new Promise(resolve => rl.question(question, ans => { rl.close(); resolve(ans.trim()); }));
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  return new Promise(resolve => {
+    let input = '';
+    const onData = (ch) => {
+      if (ch === '\n' || ch === '\r' || ch === '') {
+        if (process.stdin.setRawMode) process.stdin.setRawMode(false);
+        process.stdin.removeListener('data', onData);
+        process.stdin.pause();
+        process.stdout.write('\n');
+        resolve(input);
+      } else if (ch === '') {
+        process.exit();
+      } else if (ch === '' || ch === '\b') {
+        input = input.slice(0, -1);
+      } else {
+        input += ch;
+      }
+    };
+    process.stdin.on('data', onData);
+  });
 }
 
 async function getToken(username, password) {
@@ -91,12 +90,16 @@ async function getDevices(token, accountId) {
   return res.json();
 }
 
+const PRIVATE_FIELDS = new Set([
+  'geo-coordinates', 'wifi-ssid', 'wifi-mac-address', 'ble-mac-address',
+]);
+
 (async () => {
   console.log('Hubspace Device Capability Dumper');
   console.log('──────────────────────────────────\n');
 
-  const username = process.env.USERNAME || await prompt('Hubspace email: ');
-  const password = process.env.PASSWORD || await prompt('Hubspace password: ', true);
+  const username = process.env.USERNAME || await promptHidden('Hubspace email: ');
+  const password = process.env.PASSWORD || await promptHidden('Hubspace password: ');
 
   process.stdout.write('\nAuthenticating...');
   const token = await getToken(username, password);
@@ -107,10 +110,6 @@ async function getDevices(token, accountId) {
   const devices = raw.filter(d => d.typeId === 'metadevice.device' && d.description?.device?.deviceClass);
 
   console.log(`Found ${devices.length} device(s):\n`);
-
-  const PRIVATE_FIELDS = new Set([
-    'geo-coordinates', 'wifi-ssid', 'wifi-mac-address', 'ble-mac-address',
-  ]);
 
   for (const d of devices) {
     const desc = d.description?.device ?? {};
