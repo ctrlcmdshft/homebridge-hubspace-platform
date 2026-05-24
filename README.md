@@ -132,7 +132,7 @@ No configuration is required — Conclave is on by default. Set `"disableConclav
 - Verify your Homebridge host can reach `semantics2.afero.net`.
 
 **Device not appearing**
-- Enable `"verbose": true` and restart Homebridge. The log will show an `Unsupported deviceClass` warning for any skipped device, including its hardware model, full capability list, and a link to open a GitHub issue. See [Requesting support for a new device](#requesting-support-for-a-new-device).
+- The log will show an `Unsupported deviceClass` warning for any skipped device. Enable `"debug": true` for a full capability dump, or run the [standalone dump script](#requesting-support-for-a-new-device) — no restart needed.
 
 **Device appears but a characteristic is wrong**
 - Enable `"verbose": true` and restart Homebridge. Every poll cycle will print a `State for "..."` line with every capability and value the API returned. Paste that line in a GitHub issue along with a description of what HomeKit shows vs. what you expect.
@@ -142,32 +142,37 @@ No configuration is required — Conclave is on by default. Set `"disableConclav
 
 ## Requesting support for a new device
 
-If your Hubspace device doesn't appear in HomeKit, the plugin has skipped it because its `deviceClass` isn't implemented yet. Here's how to gather everything needed to add support:
+If your Hubspace device doesn't appear in HomeKit, the plugin has skipped it because its `deviceClass` isn't implemented yet. Choose whichever method is easiest to gather the capability info needed to add support.
 
-1. Add `"verbose": true` to your Homebridge config for this plugin and restart Homebridge.
+### Option A — Standalone script (easiest)
+
+Run this one-liner on any machine with Node.js 18+ (the same machine running Homebridge works fine):
+
+```bash
+node -e "$(curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js)"
+```
+
+It prompts for your Hubspace email and password, then prints every device on your account with its full capability list. No Homebridge restart needed.
+
+### Option B — Homebridge debug log
+
+1. Add `"debug": true` to your Homebridge config for this plugin and restart Homebridge.
 2. Watch the log. For each unsupported device you'll see a warning like:
 
    ```
    [WARN] Unsupported deviceClass "smart-dimmer" — "Hallway Switch" will not appear in HomeKit.
      Hardware     : Hubspace / HB-200-WH
      Capabilities : power, brightness, color-temperature
-     To request support: https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues
+     [debug] power[default] = "off"
+     [debug] brightness[default] = 75
+     [debug] color-temperature[default] = 3500
    ```
 
-3. Immediately below that, a `State for "..."` line shows every capability and its current value:
+3. Remove `"debug": true` once you've captured the logs.
 
-   ```
-   [Hubspace] State for "Hallway Switch": power[undefined]=off, brightness[undefined]=75, color-temperature[undefined]=3500, ...
-   ```
+### Opening an issue
 
-4. Open a GitHub issue and include:
-   - The full `Unsupported deviceClass` warning block (hardware model + capabilities line)
-   - The `State for "..."` line
-   - Your device's name and model as shown in the Hubspace app
-
-5. Remove `"verbose": true` once you've captured the logs — it logs every device every 30 seconds and is not intended for permanent use.
-
-> **Power users:** if you're comfortable running a script, `discover.mjs` (see the [Development wiki](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development)) dumps the complete raw API response for all your devices, which gives even more detail than the verbose log.
+[Open a GitHub issue](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues/new/choose) and paste the output from either method above, along with your device's name and model as shown in the Hubspace app.
 
 ---
 
