@@ -118,6 +118,7 @@ const PRIVATE_FIELDS = new Set([
   const raw = await getDevices(token, accountId);
   const devices = raw.filter(d => d.typeId === 'metadevice.device' && d.description?.device?.deviceClass);
 
+  console.log('========= COPY FROM HERE =========\n');
   console.log(`Found ${devices.length} device(s):\n`);
 
   for (const d of devices) {
