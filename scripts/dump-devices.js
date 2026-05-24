@@ -32,15 +32,28 @@ async function promptVisible(label) {
 }
 
 async function promptPassword(label) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl._writeToOutput = () => {};
   process.stdout.write(label);
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
   return new Promise(resolve => {
-    rl.question('', answer => {
-      rl.close();
-      process.stdout.write('\n');
-      resolve(answer.trim());
-    });
+    let input = '';
+    const onData = (ch) => {
+      if (ch === '\r' || ch === '\n') {
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        resolve(input);
+      } else if (ch === '') {
+        process.exit();
+      } else if (ch === '' || ch === '\b') {
+        input = input.slice(0, -1);
+      } else {
+        input += ch;
+      }
+    };
+    process.stdin.on('data', onData);
   });
 }
 
