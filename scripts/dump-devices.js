@@ -16,49 +16,29 @@
 'use strict';
 
 const readline = require('readline');
-const fs = require('fs');
 
 const AUTH_URL = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
 const USERS_ME_URL = 'https://api2.afero.net/v1/users/me';
 const SEMANTICS_BASE = 'https://semantics2.afero.net/v1';
 
-// Open /dev/tty directly so prompts work even when run via `node -e "$(curl ...)"`
-// where process.stdin may not be attached as a TTY. Falls back to stdin/stdout.
-function openTty() {
-  try {
-    const fd = fs.openSync('/dev/tty', 'r+');
-    return {
-      input: fs.createReadStream(null, { fd, autoClose: false }),
-      output: fs.createWriteStream(null, { fd, autoClose: false }),
-      fd,
-    };
-  } catch {
-    return { input: process.stdin, output: process.stdout, fd: null };
-  }
-}
-
 async function promptVisible(label) {
-  const tty = openTty();
-  const rl = readline.createInterface({ input: tty.input, output: tty.output, terminal: true });
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
     rl.question(label, answer => {
       rl.close();
-      if (tty.fd !== null) fs.closeSync(tty.fd);
       resolve(answer.trim());
     });
   });
 }
 
 async function promptPassword(label) {
-  const tty = openTty();
-  const rl = readline.createInterface({ input: tty.input, output: tty.output, terminal: true });
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   rl._writeToOutput = () => {};
-  tty.output.write(label);
+  process.stdout.write(label);
   return new Promise(resolve => {
     rl.question('', answer => {
       rl.close();
-      tty.output.write('\n');
-      if (tty.fd !== null) fs.closeSync(tty.fd);
+      process.stdout.write('\n');
       resolve(answer.trim());
     });
   });
