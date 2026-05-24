@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.3] - 2026-05-24
+
+### Features
+
+- **Device capability dump script** — `scripts/dump-devices.js` is a standalone Node 18+ script that prints every device on your account with its full capability and value list; useful for opening device support requests without needing debug logs from a running Homebridge instance; run via curl one-liner (see README); supports accounts with 2FA enabled; sensitive fields (`geo-coordinates`, `wifi-ssid`, `wifi-mac-address`, `ble-mac-address`) are always redacted from output
+
+### Bug Fixes
+
+- **`error-flag` now triggers StatusFault** — fans reporting `acz-error` or `storage-error` hardware faults (via `error-flag:*` state values) now correctly surface `StatusFault.GENERAL_FAULT` in HomeKit when `exposeStatusFault: true` is set; previously only `available=false` (device offline) triggered StatusFault
+
+### Privacy
+
+- **Sensitive fields redacted from debug logs** — `geo-coordinates`, `wifi-ssid`, `wifi-mac-address`, and `ble-mac-address` are no longer included in the raw capability dump that appears in Homebridge logs when `debug: true` is set for an unsupported device
+
+---
+
 ## [2.0.2] - 2026-05-24
 
 ### Improvements
