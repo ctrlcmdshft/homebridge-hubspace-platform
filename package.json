@@ -26,7 +26,7 @@
     "test:coverage": "jest --coverage",
     "prepublishOnly": "npm run lint && npm run build",
     "clean": "rm -rf dist/",
-    "dump": "npm run build && node dist/dump-devices.js"
+    "dump": "node scripts/dump-devices.js"
   },
   "keywords": [
     "homebridge-plugin",

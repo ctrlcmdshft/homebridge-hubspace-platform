@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Internal
+
+- **Removed `src/dump-devices.ts`** — the old TypeScript dump script compiled to `dist/dump-devices.js` and shipped unnecessarily in the npm tarball; it also lacked 2FA support; `npm run dump` now runs `scripts/dump-devices.js` directly (the 2FA-capable standalone version) without requiring a build step first
+
+---
+
 ## [2.0.3] - 2026-05-24
 
 ### Features
