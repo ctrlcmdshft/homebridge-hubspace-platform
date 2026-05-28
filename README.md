@@ -146,13 +146,29 @@ If your Hubspace device doesn't appear in HomeKit, the plugin has skipped it bec
 
 ### Option A — Standalone script (easiest)
 
-Run this command on any machine with Node.js 18+ (the same machine running Homebridge works fine):
+**Requirements:**
+- Node.js 18+ (already installed if you're running Homebridge)
+- macOS / Linux: `curl` (pre-installed on macOS and most Linux distros)
+- Windows: Windows 10 1803+ or Windows 11 (includes `curl.exe`), and Node.js in your PATH
 
+Run this command on any machine — the same machine running Homebridge works fine:
+
+**macOS / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js -o /tmp/hubspace-dump.js && node /tmp/hubspace-dump.js
 ```
 
-It prompts for your Hubspace email (visible) and password (hidden — just type and press Enter). When it finishes you'll see:
+**Windows (PowerShell — Windows 10 1803+ / Windows 11):**
+```powershell
+curl.exe -o $env:TEMP\hubspace-dump.js https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js; node $env:TEMP\hubspace-dump.js
+```
+
+**Windows (PowerShell fallback — any version):**
+```powershell
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js -OutFile $env:TEMP\hubspace-dump.js; node $env:TEMP\hubspace-dump.js
+```
+
+It prompts for your Hubspace email (visible) and password (hidden on macOS/Linux, visible on Windows — just type and press Enter). When it finishes you'll see:
 
 ```
 ========= COPY FROM HERE =========

@@ -37,6 +37,10 @@ async function promptVisible(label) {
 }
 
 async function promptPassword(label) {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
+    // Windows CMD / non-TTY: visible fallback
+    return promptVisible(label);
+  }
   process.stdout.write(label);
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -50,9 +54,9 @@ async function promptPassword(label) {
         process.stdin.removeListener('data', onData);
         process.stdout.write('\n');
         resolve(input);
-      } else if (ch === '') {
+      } else if (ch === '\x03') {
         process.exit();
-      } else if (ch === '' || ch === '\b') {
+      } else if (ch === '\x7f' || ch === '\b') {
         input = input.slice(0, -1);
       } else {
         input += ch;
@@ -238,8 +242,8 @@ const PRIVATE_FIELDS = new Set([
   console.log('Hubspace Device Capability Dumper');
   console.log('----------------------------------\n');
 
-  const username = process.env.USERNAME || await promptVisible('Hubspace email: ');
-  const password = process.env.PASSWORD || await promptPassword('Hubspace password (type then press Enter, nothing will show): ');
+  const username = process.env.HUBSPACE_EMAIL || await promptVisible('Hubspace email: ');
+  const password = process.env.HUBSPACE_PASS || await promptPassword('Hubspace password (type then press Enter, nothing will show): ');
 
   process.stdout.write('\nAuthenticating...');
   const token = await getToken(username, password);
