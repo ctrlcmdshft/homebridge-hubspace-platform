@@ -51,6 +51,8 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 >
 > **Hubspace light bulbs:** All EcoSmart/Hubspace A19 bulbs (color changing and tunable white variants) should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only. The plugin detects capabilities automatically.
 
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
+
 ---
 
 ## Requirements
@@ -58,6 +60,8 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 - **Node.js** all active LTS releases (currently 22 and 24)
 - **Homebridge** ≥ 1.8.0 or 2.x
 - A Hubspace / Home Depot account with at least one paired device
+
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
 
 ---
 
@@ -69,6 +73,8 @@ Accounts protected by email-code 2FA are fully supported. After installing the p
 - **2FA enabled?** You'll be prompted to enter the one-time code from your email before the session is saved.
 
 Authentication is cached so you only need to log in once. If the cache expires or is deleted, open Plugin Settings to log in again.
+
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
 
 ---
 
@@ -84,6 +90,8 @@ The right method depends on your setup:
 | Manual Node install | `npm install -g homebridge-hubspace-platform` — only if Homebridge itself was installed globally via npm |
 
 > **Note:** `npm install -g` installs into the system Node prefix, not the Homebridge plugin directory. On most setups (Docker, hb-service, HOOBS) the plugin won't be found. Prefer the Homebridge UI where possible.
+
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
 
 ---
 
@@ -117,6 +125,8 @@ Minimal `config.json` entry under `"platforms"`:
 | `invertOutletStatus` | boolean | `false` | Invert the reported on/off state for smart plugs that report their status backwards |
 | `tokenCachePath` | string | — | Override the path for the cached auth token file. Leave blank to use the Homebridge storage directory (recommended). |
 
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
+
 ---
 
 ## Real-time push (Conclave)
@@ -124,6 +134,8 @@ Minimal `config.json` entry under `"platforms"`:
 The plugin maintains a persistent connection to the Afero Conclave push service. State changes — whether triggered from HomeKit or from the Hubspace app — are reflected in HomeKit within ~500 ms without waiting for a poll cycle. Regular polling (default every 30 s) runs in the background as a fallback for devices that don't emit push events.
 
 No configuration is required — Conclave is on by default. Set `"disableConclave": true` to fall back to polling only.
+
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
 
 ---
 
@@ -145,6 +157,8 @@ No configuration is required — Conclave is on by default. Set `"disableConclav
 **Device appears but a characteristic is wrong**
 - Enable `"verbose": true` and restart Homebridge. Every poll cycle will print a `State for "..."` line with every capability and value the API returned. Paste that line in a GitHub issue along with a description of what HomeKit shows vs. what you expect.
 
+
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
 
 ---
 
@@ -217,11 +231,15 @@ Copy everything from `COPY FROM HERE` to the end and paste it into your issue. Y
 
 [Open a GitHub issue](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues/new/choose) and paste the output from either method above, along with your device's name and model as shown in the Hubspace app.
 
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
+
 ---
 
 ## Development
 
 Local setup, API endpoint reference, authentication details, and the `discover.mjs` exploration script are documented in the [**Development wiki**](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development).
+
+<a href="#homebridge-hubspace-platform">↑ Back to top</a>
 
 ---
 
