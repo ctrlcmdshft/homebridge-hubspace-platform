@@ -25,7 +25,11 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 ---
 
-**[Supported devices](#supported-devices)** · **[Requirements](#requirements)** · **[2FA](#two-factor-authentication-2fa)** · **[Installation](#installation)** · **[Configuration](#configuration)** · **[Conclave](#real-time-push-conclave)** · **[Troubleshooting](#troubleshooting)** · **[New device support](#requesting-support-for-a-new-device)** · **[Development](#development)**
+<p align="center">
+<a href="#supported-devices"><b>Supported devices</b></a> · <a href="#requirements"><b>Requirements</b></a> · <a href="#two-factor-authentication-2fa"><b>2FA</b></a> · <a href="#installation"><b>Installation</b></a> · <a href="#configuration"><b>Configuration</b></a>
+<br>
+<a href="#real-time-push-conclave"><b>Conclave</b></a> · <a href="#troubleshooting"><b>Troubleshooting</b></a> · <a href="#requesting-support-for-a-new-device"><b>New device support</b></a> · <a href="#development"><b>Development</b></a>
+</p>
 
 ---
 
