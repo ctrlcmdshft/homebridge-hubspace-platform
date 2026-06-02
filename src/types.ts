@@ -119,6 +119,7 @@ export const SUPPORTED_DEVICE_CLASSES = new Set([
   'switch',
   'plug',
   'power-outlet',
+  'portable-air-conditioner',
 ]);
 
 // ─── Function class constants (Hubspace / Afero capability names) ─────────────
@@ -132,6 +133,8 @@ export const FC = {
   FAN_SPEED: 'fan-speed',
   FAN_REVERSE: 'fan-reverse',
   AVAILABLE: 'available',
+  MODE: 'mode',
+  TEMPERATURE: 'temperature',
 } as const;
 
 export type FunctionClass = (typeof FC)[keyof typeof FC];

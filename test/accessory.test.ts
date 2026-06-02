@@ -1,4 +1,4 @@
-import { LightAccessory, FanAccessory, OutletAccessory } from '../src/accessory';
+import { LightAccessory, FanAccessory, OutletAccessory, PortableAcAccessory } from '../src/accessory';
 import { DeviceStateValue, FC } from '../src/types';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ function makeSvcMock() {
     addOptionalCharacteristic: jest.fn(),
     setCharacteristic: jest.fn().mockReturnThis(),
     updateCharacteristic: jest.fn(),
+    _char: char,
   };
 }
 
@@ -26,6 +27,8 @@ function makeSvcMock() {
 // use them in assertions so they match what the code passes to updateCharacteristic.
 const Active = { ACTIVE: 1, INACTIVE: 0 };
 const StatusFault = { NO_FAULT: 0, GENERAL_FAULT: 1 };
+const CurrentHeaterCoolerState = { INACTIVE: 0, IDLE: 1, HEATING: 2, COOLING: 3 };
+const TargetHeaterCoolerState = { AUTO: 0, HEAT: 1, COOL: 2 };
 
 function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
   const svc = makeSvcMock();
@@ -48,6 +51,7 @@ function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
       Lightbulb: 'Lightbulb',
       Outlet: 'Outlet',
       Switch: 'Switch',
+      HeaterCooler: 'HeaterCooler',
       AccessoryInformation: 'AccessoryInformation',
     },
     Characteristic: {
@@ -60,6 +64,10 @@ function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
       Saturation: 'Saturation',
       StatusFault,
       OutletInUse: 'OutletInUse',
+      CurrentHeaterCoolerState,
+      TargetHeaterCoolerState,
+      CurrentTemperature: 'CurrentTemperature',
+      CoolingThresholdTemperature: 'CoolingThresholdTemperature',
       Manufacturer: 'Manufacturer',
       Model: 'Model',
       SerialNumber: 'SerialNumber',
@@ -453,6 +461,277 @@ describe('OutletAccessory', () => {
       expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
         StatusFault, StatusFault.NO_FAULT,
       );
+    });
+  });
+});
+
+// ── PortableAcAccessory ───────────────────────────────────────────────────────
+
+function makeAcDevice(values: DeviceStateValue[]) {
+  return {
+    id: 'ac-1', allIds: ['ac-1'], typeId: 'metadevice.device',
+    friendlyName: 'Bedroom AC', deviceClass: 'portable-air-conditioner',
+    manufacturerName: 'Vissani', model: 'VAP05R1AWT', values,
+  };
+}
+
+function makeAcValues(overrides: Partial<Record<string, DeviceStateValue['value']>> = {}): DeviceStateValue[] {
+  return [
+    sv(FC.POWER, overrides['power'] ?? 'on'),
+    sv(FC.MODE, overrides['mode'] ?? 'cool'),
+    sv(FC.TEMPERATURE, overrides['current-temp'] ?? 22, 'current-temp'),
+    sv(FC.TEMPERATURE, overrides['cooling-target'] ?? 22, 'cooling-target'),
+    sv(FC.FAN_SPEED, overrides['fan-speed'] ?? 'fan-speed-auto', 'ac-fan-speed'),
+  ];
+}
+
+describe('PortableAcAccessory', () => {
+  describe('Active (power)', () => {
+    it.each([
+      ['on', Active.ACTIVE],
+      ['off', Active.INACTIVE],
+    ])('power "%s" → Active %i', (value, expected) => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: value }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(Active, expected);
+    });
+  });
+
+  describe('CurrentHeaterCoolerState', () => {
+    it('returns INACTIVE when power is off', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'off' }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        CurrentHeaterCoolerState, CurrentHeaterCoolerState.INACTIVE);
+    });
+
+    it('returns COOLING when power is on', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on' }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        CurrentHeaterCoolerState, CurrentHeaterCoolerState.COOLING);
+    });
+  });
+
+  describe('TargetHeaterCoolerState', () => {
+    it('always returns COOL', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues());
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        TargetHeaterCoolerState, TargetHeaterCoolerState.COOL);
+    });
+  });
+
+  describe('CurrentTemperature', () => {
+    it('reads current-temp value', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ 'current-temp': 23 }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        'CurrentTemperature', 23);
+    });
+  });
+
+  describe('CoolingThresholdTemperature', () => {
+    it('reads cooling-target value', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ 'cooling-target': 20 }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        'CoolingThresholdTemperature', 20);
+    });
+  });
+
+  describe('fan speed (RotationSpeed)', () => {
+    it.each([
+      ['fan-speed-auto', 33],
+      ['fan-speed-low',  66],
+      ['fan-speed-high', 99],
+    ])('%s → %i%% when on', (raw, expected) => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': raw }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        'RotationSpeed', expected);
+    });
+
+    it('returns 0 when AC is off', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'off', 'fan-speed': 'fan-speed-high' }));
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 0);
+    });
+  });
+
+  describe('StatusFault (error states)', () => {
+    it('reports NO_FAULT when all errors are normal', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice([
+        ...makeAcValues(),
+        sv('error', 'normal', 'water-tray-full'),
+        sv('error', 'normal', 'indoor-temperature-sensor-failed'),
+      ]);
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.NO_FAULT);
+    });
+
+    it('reports GENERAL_FAULT when water-tray-full is not normal', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice([
+        ...makeAcValues(),
+        sv('error', 'water-tray-full', 'water-tray-full'),
+      ]);
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.GENERAL_FAULT);
+    });
+  });
+
+  describe('offline', () => {
+    it('sets noResponse on Active when offline', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.MODE, 'cool'),
+        sv(FC.TEMPERATURE, 22, 'current-temp'),
+        sv(FC.AVAILABLE, false),
+      ]);
+      const ac = new PortableAcAccessory(platform as any, acc as any, device as any);
+
+      ac.updateState(device.values);
+
+      const calls = (platform._svc.updateCharacteristic as jest.Mock).mock.calls;
+      const activeCall = calls.find((c: unknown[]) => c[0] === Active);
+      expect(activeCall?.[1]).toBeInstanceOf(Error);
+    });
+  });
+
+  // ── Setter behaviour (write-queue coalescing) ─────────────────────────────────
+  // With full makeAcValues (cooling-target + fan-speed present), the onSet
+  // handlers are registered in this order:
+  //   [0] Active (setActive)
+  //   [1] TargetHeaterCoolerState
+  //   [2] CoolingThresholdTemperature (setCoolingTarget)
+  //   [3] RotationSpeed (setAcFanSpeed)
+  //
+  // setDeviceValues enqueues patches and flushes on the next event-loop tick
+  // via setTimeout(0), so tests use fake timers and jest.runAllTimers().
+
+  describe('write-queue coalescing', () => {
+    beforeEach(() => { jest.useFakeTimers(); });
+    afterEach(() => { jest.useRealTimers(); });
+
+    function setup() {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues());
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetActive: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[0][0];
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
+      return { platform, onSetActive, onSetFanSpeed };
+    }
+
+    it('coalesces simultaneous power=on and fan-speed into one PUT', async () => {
+      const { platform, onSetActive, onSetFanSpeed } = setup();
+      onSetActive(Active.ACTIVE);
+      onSetFanSpeed(99);
+      expect(platform.client.setDeviceState).not.toHaveBeenCalled();
+      jest.runAllTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-high' }),
+      ]));
+    });
+
+    it('last write wins when the same key is enqueued twice', async () => {
+      const { platform, onSetFanSpeed } = setup();
+      onSetFanSpeed(33);
+      onSetFanSpeed(99);
+      jest.runAllTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      const fanPatch = patches.find((p: { functionClass: string }) =>
+        p.functionClass === FC.FAN_SPEED);
+      expect(fanPatch).toEqual(expect.objectContaining({ value: 'fan-speed-high' }));
+    });
+
+    it.each([
+      [33, 'fan-speed-auto'],
+      [66, 'fan-speed-low'],
+      [99, 'fan-speed-high'],
+    ])('fan %i%% → %s in the flushed batch', async (pct, expected) => {
+      const { platform, onSetFanSpeed } = setup();
+      onSetFanSpeed(pct);
+      jest.runAllTimers();
+      await Promise.resolve();
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: expected }),
+      ]));
+    });
+
+    it('fan speed 0 enqueues power=off', async () => {
+      const { platform, onSetFanSpeed } = setup();
+      onSetFanSpeed(0);
+      jest.runAllTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'off' }),
+      ]);
     });
   });
 });
