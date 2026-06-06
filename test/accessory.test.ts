@@ -198,6 +198,94 @@ describe('FanAccessory', () => {
     });
   });
 
+  describe('write-queue coalescing', () => {
+    beforeEach(() => { jest.useFakeTimers(); });
+    afterEach(() => { jest.useRealTimers(); });
+
+    function setup(values: DeviceStateValue[]) {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice(values);
+      new FanAccessory(platform as any, acc as any, device as any);
+      const onSetActive: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[0][0];
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
+      return { platform, onSetActive, onSetFanSpeed };
+    }
+
+    it('turns on without replacing the stored speed with HomeKit synthetic 100%', async () => {
+      const { platform, onSetActive, onSetFanSpeed } = setup([
+        sv(FC.POWER, 'off', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetActive(Active.ACTIVE);
+      onSetFanSpeed(100);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+      ]);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 50);
+    });
+
+    it('still allows an explicit speed change to 100% while already on', async () => {
+      const { platform, onSetFanSpeed } = setup([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetFanSpeed(100);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-100' }),
+      ]);
+    });
+
+    it('serializes writes that arrive while a PUT is in flight', async () => {
+      const { platform, onSetActive, onSetFanSpeed } = setup([
+        sv(FC.POWER, 'off', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+      let resolveFirst: () => void;
+      const firstPut = new Promise<void>((resolve) => {
+        resolveFirst = resolve;
+      });
+      (platform.client.setDeviceState as jest.Mock)
+        .mockReturnValueOnce(firstPut)
+        .mockResolvedValue(undefined);
+
+      onSetActive(Active.ACTIVE);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+
+      onSetFanSpeed(75);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+
+      resolveFirst!();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(2);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[1];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-075' }),
+      ]);
+    });
+  });
+
   describe('comfort breeze', () => {
     function makeCompanionMock(platform: ReturnType<typeof makePlatform>) {
       const svc = makeSvcMock();
@@ -731,6 +819,48 @@ describe('PortableAcAccessory', () => {
       const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
       expect(patches).toEqual([
         expect.objectContaining({ functionClass: FC.POWER, value: 'off' }),
+      ]);
+    });
+
+    it('turns on without replacing the stored fan mode with HomeKit synthetic high', async () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'off', 'fan-speed': 'fan-speed-low' }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetActive: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[0][0];
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
+
+      onSetActive(Active.ACTIVE);
+      onSetFanSpeed(99);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+      ]);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 66);
+    });
+
+    it('still allows an explicit high fan mode while already on', async () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': 'fan-speed-low' }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
+
+      onSetFanSpeed(99);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-high' }),
       ]);
     });
   });
