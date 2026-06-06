@@ -167,6 +167,7 @@ export abstract class BaseHubspaceAccessory {
   // merged into a single PUT, preventing concurrent-request 400s from the API.
   private readonly pendingWrites = new Map<string, Partial<DeviceStateValue>>();
   private writeFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private writeInFlight = false;
 
   protected setDeviceValues(values: Partial<DeviceStateValue>[]): void {
     this.applyOptimisticUpdate(values);
@@ -174,6 +175,10 @@ export abstract class BaseHubspaceAccessory {
       const key = `${patch.functionClass}:${patch.functionInstance ?? ''}`;
       this.pendingWrites.set(key, patch);
     }
+    this.scheduleWriteFlush();
+  }
+
+  private scheduleWriteFlush(): void {
     if (!this.writeFlushTimer) {
       this.writeFlushTimer = setTimeout(() => void this.flushWrites(), 0);
     }
@@ -181,9 +186,11 @@ export abstract class BaseHubspaceAccessory {
 
   private async flushWrites(): Promise<void> {
     this.writeFlushTimer = null;
+    if (this.writeInFlight) return;
     if (this.pendingWrites.size === 0) return;
     const patches = [...this.pendingWrites.values()];
     this.pendingWrites.clear();
+    this.writeInFlight = true;
     try {
       await this.platform.client.setDeviceState(this.device.id, patches);
       this.platform.scheduleQuickPoll(this.device.id, 3000);
@@ -194,6 +201,11 @@ export abstract class BaseHubspaceAccessory {
         : String(err);
       this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail}`);
       this.platform.scheduleQuickPoll(this.device.id, 0);
+    } finally {
+      this.writeInFlight = false;
+      if (this.pendingWrites.size > 0) {
+        this.scheduleWriteFlush();
+      }
     }
   }
 
@@ -433,6 +445,8 @@ export class FanAccessory extends BaseHubspaceAccessory {
   declare private lightSvc: Service | null;
   private cbAcc: PlatformAccessory | null = null;
   private mpAcc: PlatformAccessory | null = null;
+  private suppressTurnOnSpeedPercent: number | null = null;
+  private suppressTurnOnSpeedTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected setupServices(): void {
     this.lightSvc = null;
@@ -534,26 +548,62 @@ export class FanAccessory extends BaseHubspaceAccessory {
     instance: string | undefined,
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
+    const wasInactive = this.getFanActive() === this.platform.Characteristic.Active.INACTIVE;
+    if (on && wasInactive) {
+      const storedSpeed = this.getStoredFanSpeed();
+      if (storedSpeed > 0 && storedSpeed < 100) {
+        this.suppressTurnOnSpeedPercent = 100;
+        if (this.suppressTurnOnSpeedTimer) clearTimeout(this.suppressTurnOnSpeedTimer);
+        this.suppressTurnOnSpeedTimer = setTimeout(() => {
+          this.suppressTurnOnSpeedPercent = null;
+          this.suppressTurnOnSpeedTimer = null;
+        }, 1000);
+      }
+    } else {
+      this.clearSuppressedTurnOnSpeed();
+    }
     this.setDeviceValues([
       this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
     ]);
   }
 
-  private getFanSpeed(): CharacteristicValue {
-    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
+  private getStoredFanSpeed(): number {
     const v = this.findValue(FC.FAN_SPEED);
     return v ? hubspeedToPercent(String(v.value)) : 50;
   }
 
+  private getFanSpeed(): CharacteristicValue {
+    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
+    return this.getStoredFanSpeed();
+  }
+
   private async setFanSpeed(percent: number): Promise<void> {
     if (percent === 0) {
+      this.clearSuppressedTurnOnSpeed();
       const fanPower = this.findFanPowerValue();
       this.setDeviceValues([this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance)]);
       return;
     }
+    if (this.suppressTurnOnSpeedPercent === percent) {
+      this.clearSuppressedTurnOnSpeed();
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getFanSpeed(),
+      );
+      return;
+    }
+    this.clearSuppressedTurnOnSpeed();
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  private clearSuppressedTurnOnSpeed(): void {
+    this.suppressTurnOnSpeedPercent = null;
+    if (this.suppressTurnOnSpeedTimer) {
+      clearTimeout(this.suppressTurnOnSpeedTimer);
+      this.suppressTurnOnSpeedTimer = null;
+    }
   }
 
   private getFanDirection(): CharacteristicValue {
@@ -843,6 +893,8 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
 
 export class PortableAcAccessory extends BaseHubspaceAccessory {
   declare private svc: Service;
+  private suppressTurnOnSpeedPercent: number | null = null;
+  private suppressTurnOnSpeedTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected setupServices(): void {
     this.svc =
@@ -936,6 +988,10 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
 
   private getAcFanSpeed(): CharacteristicValue {
     if (this.getActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
+    return this.getStoredAcFanSpeed();
+  }
+
+  private getStoredAcFanSpeed(): number {
     const v = this.findValue(FC.FAN_SPEED);
     switch (String(v?.value ?? '')) {
       case 'fan-speed-low':  return 66;
@@ -948,6 +1004,20 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
 
   private async setActive(hkActive: number): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
+    const wasInactive = this.getActive() === this.platform.Characteristic.Active.INACTIVE;
+    if (on && wasInactive) {
+      const storedSpeed = this.getStoredAcFanSpeed();
+      if (storedSpeed > 0 && storedSpeed < 99) {
+        this.suppressTurnOnSpeedPercent = 99;
+        if (this.suppressTurnOnSpeedTimer) clearTimeout(this.suppressTurnOnSpeedTimer);
+        this.suppressTurnOnSpeedTimer = setTimeout(() => {
+          this.suppressTurnOnSpeedPercent = null;
+          this.suppressTurnOnSpeedTimer = null;
+        }, 1000);
+      }
+    } else {
+      this.clearSuppressedTurnOnSpeed();
+    }
     this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
   }
 
@@ -968,14 +1038,32 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
 
   private async setAcFanSpeed(percent: number): Promise<void> {
     if (percent === 0) {
+      this.clearSuppressedTurnOnSpeed();
       this.setDeviceValues([this.buildPatch(FC.POWER, 'off')]);
       return;
     }
+    if (this.suppressTurnOnSpeedPercent === percent) {
+      this.clearSuppressedTurnOnSpeed();
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getAcFanSpeed(),
+      );
+      return;
+    }
+    this.clearSuppressedTurnOnSpeed();
     let speed: string;
     if (percent <= 33) speed = 'fan-speed-auto';
     else if (percent <= 66) speed = 'fan-speed-low';
     else speed = 'fan-speed-high';
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, speed)]);
+  }
+
+  private clearSuppressedTurnOnSpeed(): void {
+    this.suppressTurnOnSpeedPercent = null;
+    if (this.suppressTurnOnSpeedTimer) {
+      clearTimeout(this.suppressTurnOnSpeedTimer);
+      this.suppressTurnOnSpeedTimer = null;
+    }
   }
 
   // ── Push ──────────────────────────────────────────────────────────────────────
