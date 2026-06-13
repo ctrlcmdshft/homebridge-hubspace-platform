@@ -206,12 +206,12 @@ describe('FanAccessory', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
       const device = makeFanDevice(values);
-      new FanAccessory(platform as any, acc as any, device as any);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
       const onSetActive: (v: number) => void =
         (platform._svc._char.onSet as jest.Mock).mock.calls[0][0];
       const onSetFanSpeed: (v: number) => void =
         (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
-      return { platform, onSetActive, onSetFanSpeed };
+      return { platform, fanAcc, onSetActive, onSetFanSpeed };
     }
 
     it('turns on without replacing the stored speed with HomeKit synthetic 100%', async () => {
@@ -222,15 +222,122 @@ describe('FanAccessory', () => {
 
       onSetActive(Active.ACTIVE);
       onSetFanSpeed(100);
-      jest.runAllTimers();
+      jest.runOnlyPendingTimers();
       await Promise.resolve();
 
       expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
       const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
       expect(patches).toEqual([
         expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-050' }),
+      ]);
+      // Suppression branch must immediately snap tile to stored speed (not 0 or 100)
+      const updateCalls = (platform._svc.updateCharacteristic as jest.Mock).mock.calls;
+      const firstSpeedUpdate = updateCalls.find(([c]) => c === 'RotationSpeed');
+      expect(firstSpeedUpdate).toEqual(['RotationSpeed', 50]);
+    });
+
+    it('restores the stored fan speed when powering back on', async () => {
+      const { platform, onSetActive } = setup([
+        sv(FC.POWER, 'off', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetActive(Active.ACTIVE);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-050' }),
+      ]);
+    });
+
+    it('uses the remembered user speed when Hubspace reports 100% while off', async () => {
+      const { platform, fanAcc, onSetActive, onSetFanSpeed } = setup([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetFanSpeed(50);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      (platform.client.setDeviceState as jest.Mock).mockClear();
+
+      fanAcc.updateState([
+        sv(FC.POWER, 'off', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-100', 'fan-speed'),
+      ]);
+
+      onSetActive(Active.ACTIVE);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-050' }),
       ]);
       expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 50);
+    });
+
+    it('does not let an inactive synthetic 100% write replace the remembered speed', async () => {
+      const { platform, fanAcc, onSetActive, onSetFanSpeed } = setup([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetFanSpeed(50);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      (platform.client.setDeviceState as jest.Mock).mockClear();
+
+      fanAcc.updateState([
+        sv(FC.POWER, 'off', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetFanSpeed(100);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).not.toHaveBeenCalled();
+
+      onSetActive(Active.ACTIVE);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-050' }),
+      ]);
+    });
+
+    it('sends a delayed speed restore after powering on', async () => {
+      const { platform, onSetActive } = setup([
+        sv(FC.POWER, 'off', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-050', 'fan-speed'),
+      ]);
+
+      onSetActive(Active.ACTIVE);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(2);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[1];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-050' }),
+      ]);
     });
 
     it('still allows an explicit speed change to 100% while already on', async () => {
@@ -240,7 +347,7 @@ describe('FanAccessory', () => {
       ]);
 
       onSetFanSpeed(100);
-      jest.runAllTimers();
+      jest.runOnlyPendingTimers();
       await Promise.resolve();
 
       expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);

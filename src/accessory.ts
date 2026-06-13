@@ -445,6 +445,9 @@ export class FanAccessory extends BaseHubspaceAccessory {
   declare private lightSvc: Service | null;
   private cbAcc: PlatformAccessory | null = null;
   private mpAcc: PlatformAccessory | null = null;
+  private rememberedFanSpeedValue: DeviceStateValue['value'] | null = null;
+  private restoreFanSpeedValue: DeviceStateValue['value'] | null = null;
+  private restoreFanSpeedTimer: ReturnType<typeof setTimeout> | null = null;
   private suppressTurnOnSpeedPercent: number | null = null;
   private suppressTurnOnSpeedTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -467,6 +470,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
     // Rotation speed — 0 = off, 25/50/75/100 = speed steps.
     if (this.findValue(FC.FAN_SPEED)) {
+      this.rememberCurrentFanSpeed();
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .updateValue(this.getFanSpeed())
         .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
@@ -526,12 +530,33 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
   // ── Fan getters / setters ─────────────────────────────────────────────────────
 
+  override updateState(values: DeviceStateValue[]): void {
+    const incomingPower = this.findFanPowerValueIn(values);
+    const incomingActive = incomingPower?.value === 'on'
+      || incomingPower?.value === 'true'
+      || incomingPower?.value === true
+      || incomingPower?.value === 1;
+    const incomingSpeed = values.find(v => v.functionClass === FC.FAN_SPEED);
+    if (incomingSpeed && incomingActive && !this.isRestoringDifferentFanSpeed(incomingSpeed.value)) {
+      this.rememberFanSpeed(incomingSpeed.value);
+    }
+    super.updateState(values);
+  }
+
   private findFanPowerValue(): DeviceStateValue | undefined {
     // Prefer explicit fan-power instance; fall back to any power value.
     return (
       this.findValue(FC.POWER, 'fan-power') ??
       this.findValue(FC.POWER, 'primary') ??
       this.findValue(FC.POWER)
+    );
+  }
+
+  private findFanPowerValueIn(values: DeviceStateValue[]): DeviceStateValue | undefined {
+    return (
+      values.find(v => v.functionClass === FC.POWER && v.functionInstance === 'fan-power') ??
+      values.find(v => v.functionClass === FC.POWER && v.functionInstance === 'primary') ??
+      values.find(v => v.functionClass === FC.POWER)
     );
   }
 
@@ -549,8 +574,18 @@ export class FanAccessory extends BaseHubspaceAccessory {
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
     const wasInactive = this.getFanActive() === this.platform.Characteristic.Active.INACTIVE;
+    const patches: Partial<DeviceStateValue>[] = [
+      this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
+    ];
     if (on && wasInactive) {
-      const storedSpeed = this.getStoredFanSpeed();
+      const storedSpeedPatch = this.buildRememberedFanSpeedPatch();
+      const storedSpeed = storedSpeedPatch
+        ? hubspeedToPercent(String(storedSpeedPatch.value))
+        : 0;
+      if (storedSpeedPatch) {
+        patches.push(storedSpeedPatch);
+        this.scheduleFanSpeedRestore(storedSpeedPatch.value as DeviceStateValue['value']);
+      }
       if (storedSpeed > 0 && storedSpeed < 100) {
         this.suppressTurnOnSpeedPercent = 100;
         if (this.suppressTurnOnSpeedTimer) clearTimeout(this.suppressTurnOnSpeedTimer);
@@ -561,13 +596,15 @@ export class FanAccessory extends BaseHubspaceAccessory {
       }
     } else {
       this.clearSuppressedTurnOnSpeed();
+      this.clearFanSpeedRestore();
     }
-    this.setDeviceValues([
-      this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
-    ]);
+    this.setDeviceValues(patches);
   }
 
   private getStoredFanSpeed(): number {
+    if (this.restoreFanSpeedValue !== null) {
+      return hubspeedToPercent(String(this.restoreFanSpeedValue));
+    }
     const v = this.findValue(FC.FAN_SPEED);
     return v ? hubspeedToPercent(String(v.value)) : 50;
   }
@@ -584,18 +621,82 @@ export class FanAccessory extends BaseHubspaceAccessory {
       this.setDeviceValues([this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance)]);
       return;
     }
+    const rememberedSpeed = this.rememberedFanSpeedValue === null
+      ? 0
+      : hubspeedToPercent(String(this.rememberedFanSpeedValue));
+    if (
+      this.getFanActive() === this.platform.Characteristic.Active.INACTIVE
+      && percent === 100
+      && rememberedSpeed > 0
+      && rememberedSpeed < 100
+    ) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        rememberedSpeed,
+      );
+      return;
+    }
     if (this.suppressTurnOnSpeedPercent === percent) {
       this.clearSuppressedTurnOnSpeed();
       this.fanSvc.updateCharacteristic(
         this.platform.Characteristic.RotationSpeed,
-        this.getFanSpeed(),
+        this.getStoredFanSpeed(),
       );
       return;
     }
     this.clearSuppressedTurnOnSpeed();
+    this.clearFanSpeedRestore();
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
+    this.rememberFanSpeed(raw);
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  private rememberCurrentFanSpeed(): void {
+    const current = this.findValue(FC.FAN_SPEED);
+    if (current) {
+      this.rememberFanSpeed(current.value);
+    }
+  }
+
+  private rememberFanSpeed(value: DeviceStateValue['value']): void {
+    if (hubspeedToPercent(String(value)) > 0) {
+      this.rememberedFanSpeedValue = value;
+    }
+  }
+
+  private buildRememberedFanSpeedPatch(): Partial<DeviceStateValue> | null {
+    const current = this.findValue(FC.FAN_SPEED);
+    const value = this.rememberedFanSpeedValue ?? current?.value;
+    if (value === undefined || value === null || hubspeedToPercent(String(value)) <= 0) {
+      return null;
+    }
+    return this.buildPatch(FC.FAN_SPEED, value, current?.functionInstance);
+  }
+
+  private scheduleFanSpeedRestore(value: DeviceStateValue['value']): void {
+    this.restoreFanSpeedValue = value;
+    if (this.restoreFanSpeedTimer) clearTimeout(this.restoreFanSpeedTimer);
+    this.restoreFanSpeedTimer = setTimeout(() => {
+      const patch = this.buildRememberedFanSpeedPatch();
+      if (patch) {
+        this.setDeviceValues([patch]);
+      }
+      this.clearFanSpeedRestore();
+    }, 1200);
+  }
+
+  private clearFanSpeedRestore(): void {
+    this.restoreFanSpeedValue = null;
+    if (this.restoreFanSpeedTimer) {
+      clearTimeout(this.restoreFanSpeedTimer);
+      this.restoreFanSpeedTimer = null;
+    }
+  }
+
+  private isRestoringDifferentFanSpeed(value: DeviceStateValue['value']): boolean {
+    return this.restoreFanSpeedValue !== null
+      && hubspeedToPercent(String(value)) !== hubspeedToPercent(String(this.restoreFanSpeedValue));
   }
 
   private clearSuppressedTurnOnSpeed(): void {
