@@ -196,10 +196,11 @@ export abstract class BaseHubspaceAccessory {
       this.platform.scheduleQuickPoll(this.device.id, 3000);
     } catch (err) {
       const detail = isAxiosError(err)
-        ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? err.message}` +
+        ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? JSON.stringify(err.response?.data) ?? err.message}` +
           (err.response?.data?.requestId ? ` (requestId: ${err.response.data.requestId})` : '')
         : String(err);
-      this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail}`);
+      const patchSummary = patches.map(p => `${p.functionClass}[${p.functionInstance}]=${JSON.stringify(p.value)}`).join(', ');
+      this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail} | sent: ${patchSummary}`);
       this.platform.scheduleQuickPoll(this.device.id, 0);
     } finally {
       this.writeInFlight = false;
@@ -610,7 +611,14 @@ export class FanAccessory extends BaseHubspaceAccessory {
   }
 
   private getFanSpeed(): CharacteristicValue {
-    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
+    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) {
+      // Report stored speed even when off so HomeKit slider stays at the last speed.
+      // This prevents the Home app from sending a synthetic RotationSpeed=100 on power-on,
+      // which would cause the tile to flash 100% before settling on the correct speed.
+      return this.rememberedFanSpeedValue !== null
+        ? hubspeedToPercent(String(this.rememberedFanSpeedValue))
+        : 0;
+    }
     return this.getStoredFanSpeed();
   }
 
@@ -645,9 +653,17 @@ export class FanAccessory extends BaseHubspaceAccessory {
       return;
     }
     this.clearSuppressedTurnOnSpeed();
-    this.clearFanSpeedRestore();
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
+    if (
+      this.restoreFanSpeedValue !== null
+      && hubspeedToPercent(String(raw)) === hubspeedToPercent(String(this.restoreFanSpeedValue))
+    ) {
+      // HomeKit echoing back the speed we're already restoring — don't cancel the restore timer.
+      this.rememberFanSpeed(raw);
+      return;
+    }
+    this.clearFanSpeedRestore();
     this.rememberFanSpeed(raw);
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
   }
@@ -1088,7 +1104,8 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
   }
 
   private getAcFanSpeed(): CharacteristicValue {
-    if (this.getActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
+    // Report stored speed even when off so HomeKit slider stays at last-used speed.
+    // Prevents the Home app from sending a synthetic high-speed on power-on.
     return this.getStoredAcFanSpeed();
   }
 
