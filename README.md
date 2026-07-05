@@ -44,6 +44,8 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 | Hubspace Smart Switch | On/off | Implemented, untested |
 | EcoSmart Smart RGBWIC LED Strip Light (AL-HSTL-RGBICTW) | On/off · brightness · color temperature · RGB color | Tested with hardware |
 | EcoSmart Smart A19 Color Bulb (12A19060WRGBWH1) | On/off · brightness · color temperature · RGB color | Tested with hardware |
+| Vissani 5000 BTU Portable Air Conditioner (VAP05R1AWT) | Power on/off · cooling target temperature · fan speed (auto / low / high) · current temperature | Tested with hardware |
+| Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI) | Master power on/off · 3 independently controlled zones · overload fault detection | Implemented, untested |
 
 > ¹ **Device-dependent:** rotation direction requires the device to report the `fan-reverse` capability; Comfort Breeze requires `toggle[comfort-breeze]`. These tiles will not appear if the hardware doesn't support the capability — no config change needed.
 >

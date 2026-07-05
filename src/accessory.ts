@@ -1210,6 +1210,101 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
   }
 }
 
+// ─── Landscape transformer accessory ─────────────────────────────────────────
+
+export class LandscapeTransformerAccessory extends BaseHubspaceAccessory {
+  declare private masterSvc: Service;
+  declare private zoneSvcs: Map<string, Service>;
+
+  private get zoneInstances(): string[] {
+    const instances: string[] = [];
+    for (const [, v] of this.stateMap) {
+      if (v.functionClass === FC.TOGGLE && /^zone-\d+$/.test(v.functionInstance ?? '')) {
+        instances.push(v.functionInstance!);
+      }
+    }
+    return instances.sort();
+  }
+
+  protected setupServices(): void {
+    this.masterSvc =
+      this.accessory.getService(this.platform.Service.Switch) ??
+      this.accessory.addService(this.platform.Service.Switch, this.device.friendlyName);
+
+    this.masterSvc.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getMasterPower();
+      })
+      .onSet((v) => { void this.setMasterPower(v as boolean); });
+
+    this.masterSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+    this.masterSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
+      .onGet(() => this.getStatusFault());
+
+    this.zoneSvcs = new Map();
+    for (const instance of this.zoneInstances) {
+      const label = instance.replace(/^zone-(\d+)$/, 'Zone $1');
+      const svc =
+        this.accessory.services.find((s: { subtype?: string }) => s.subtype === instance) ??
+        this.accessory.addService(this.platform.Service.Switch, label, instance);
+
+      svc.getCharacteristic(this.platform.Characteristic.On)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getZonePower(instance);
+        })
+        .onSet((v) => { void this.setZonePower(instance, v as boolean); });
+
+      this.zoneSvcs.set(instance, svc);
+    }
+  }
+
+  protected override getStatusFault(): CharacteristicValue {
+    const base = super.getStatusFault();
+    if (base !== this.platform.Characteristic.StatusFault.NO_FAULT) return base;
+    const overload = this.findValue(FC.OVERLOAD_STATE);
+    if (overload !== undefined && overload.value !== 'normal') {
+      return this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+    }
+    return this.platform.Characteristic.StatusFault.NO_FAULT;
+  }
+
+  private getMasterPower(): CharacteristicValue {
+    const v = this.findValue(FC.POWER);
+    return v?.value === 'on' || v?.value === true || v?.value === 1;
+  }
+
+  private async setMasterPower(on: boolean): Promise<void> {
+    this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
+  }
+
+  private getZonePower(instance: string): CharacteristicValue {
+    const v = this.findValue(FC.TOGGLE, instance);
+    return v?.value === 'on' || v?.value === true || v?.value === 1;
+  }
+
+  private async setZonePower(instance: string, on: boolean): Promise<void> {
+    this.setDeviceValues([this.buildPatch(FC.TOGGLE, on ? 'on' : 'off', instance)]);
+  }
+
+  protected pushCharacteristics(): void {
+    this.masterSvc.updateCharacteristic(
+      this.platform.Characteristic.StatusFault, this.getStatusFault());
+    if (this.offline) {
+      this.masterSvc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      for (const [, svc] of this.zoneSvcs) {
+        svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      }
+      return;
+    }
+    this.masterSvc.updateCharacteristic(this.platform.Characteristic.On, this.getMasterPower());
+    for (const [instance, svc] of this.zoneSvcs) {
+      svc.updateCharacteristic(this.platform.Characteristic.On, this.getZonePower(instance));
+    }
+  }
+}
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 /**
@@ -1243,6 +1338,10 @@ export function createAccessory(
 
   if (cls === 'portable-air-conditioner') {
     return new PortableAcAccessory(platform, pAccessory, device);
+  }
+
+  if (cls === 'landscape-transformer') {
+    return new LandscapeTransformerAccessory(platform, pAccessory, device);
   }
 
   platform.log.warn(

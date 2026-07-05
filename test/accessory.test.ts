@@ -1,4 +1,4 @@
-import { LightAccessory, FanAccessory, OutletAccessory, PortableAcAccessory } from '../src/accessory';
+import { LightAccessory, FanAccessory, OutletAccessory, PortableAcAccessory, LandscapeTransformerAccessory } from '../src/accessory';
 import { DeviceStateValue, FC } from '../src/types';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
 function makeAccessoryMock(platform: ReturnType<typeof makePlatform>) {
   return {
     context: {},
+    services: [] as { subtype?: string }[],
     getService: jest.fn(() => platform._svc),
     addService: jest.fn(() => platform._svc),
   };
@@ -782,7 +783,7 @@ describe('PortableAcAccessory', () => {
         'RotationSpeed', expected);
     });
 
-    it('returns 0 when AC is off', () => {
+    it('shows stored speed when AC is off so HomeKit slider stays at last-used speed', () => {
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
       const device = makeAcDevice(makeAcValues({ power: 'off', 'fan-speed': 'fan-speed-high' }));
@@ -790,7 +791,7 @@ describe('PortableAcAccessory', () => {
 
       ac.updateState(device.values);
 
-      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 0);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 99);
     });
   });
 
@@ -969,6 +970,159 @@ describe('PortableAcAccessory', () => {
       expect(patches).toEqual([
         expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-high' }),
       ]);
+    });
+  });
+});
+
+// ── LandscapeTransformerAccessory ─────────────────────────────────────────────
+
+function makeLandscapeDevice(values: DeviceStateValue[]) {
+  return {
+    id: 'landscape-1', allIds: ['landscape-1'], typeId: 'metadevice.device',
+    friendlyName: 'Front Landscape Lights', deviceClass: 'landscape-transformer',
+    manufacturerName: 'Hampton Bay', model: 'HB-200-1215WIFI', values,
+  };
+}
+
+describe('LandscapeTransformerAccessory', () => {
+  describe('master power', () => {
+    it.each([
+      ['on', true],
+      ['off', false],
+    ])('power[default]=%j → On=%s', (value, expected) => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([sv(FC.POWER, value as any)]);
+      const xfmr = new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+
+      xfmr.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('On', expected);
+    });
+
+    it('sends power patch on setMasterPower', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([sv(FC.POWER, 'off')]);
+      new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+
+      const onSet: (v: boolean) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[0][0];
+      onSet(true);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+      ]);
+      jest.useRealTimers();
+    });
+  });
+
+  describe('zones', () => {
+    it('updates On for each zone on pushCharacteristics', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.TOGGLE, 'on', 'zone-1'),
+        sv(FC.TOGGLE, 'off', 'zone-2'),
+        sv(FC.TOGGLE, 'on', 'zone-3'),
+      ]);
+      const xfmr = new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+
+      xfmr.updateState(device.values);
+
+      const calls = (platform._svc.updateCharacteristic as jest.Mock).mock.calls
+        .filter(([c]) => c === 'On');
+      // master + 3 zones = 4 On updates
+      expect(calls.length).toBe(4);
+    });
+
+    it('sends toggle patch for a zone', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.TOGGLE, 'off', 'zone-1'),
+        sv(FC.TOGGLE, 'off', 'zone-2'),
+        sv(FC.TOGGLE, 'off', 'zone-3'),
+      ]);
+      new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+
+      const onSet: (v: boolean) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
+      onSet(true);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.TOGGLE, value: 'on' }),
+      ]);
+      jest.useRealTimers();
+    });
+  });
+
+  describe('StatusFault', () => {
+    it('reports NO_FAULT when overload-state is normal', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([
+        sv(FC.POWER, 'on'),
+        sv('overload-state', 'normal', 'default'),
+      ]);
+      const xfmr = new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+
+      xfmr.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.NO_FAULT,
+      );
+    });
+
+    it('reports GENERAL_FAULT when overload-state is not normal', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([
+        sv(FC.POWER, 'on'),
+        sv('overload-state', 'overload', 'default'),
+      ]);
+      const xfmr = new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+
+      xfmr.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.GENERAL_FAULT,
+      );
+    });
+  });
+
+  describe('offline', () => {
+    it('sets No Response for master and zones when offline', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLandscapeDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.TOGGLE, 'on', 'zone-1'),
+        sv(FC.TOGGLE, 'on', 'zone-2'),
+        sv(FC.AVAILABLE, false),
+      ]);
+      const xfmr = new LandscapeTransformerAccessory(platform as any, acc as any, device as any);
+      (platform._svc.updateCharacteristic as jest.Mock).mockClear();
+
+      xfmr.updateState(device.values);
+
+      const onCalls = (platform._svc.updateCharacteristic as jest.Mock).mock.calls
+        .filter(([c]) => c === 'On');
+      // master + 2 zones = 3 On updates, all with noResponse (Error)
+      expect(onCalls.length).toBe(3);
+      onCalls.forEach(([, v]) => expect(v).toBeInstanceOf(Error));
     });
   });
 });
