@@ -19,6 +19,7 @@
 - **Concurrent login/OTP requests could corrupt session state** — overlapping `/start-login` or `/submit-otp` IPC messages (e.g. a stale retry after a client-side timeout) could race and clobber the in-progress OTP session; these routes are now serialized so a second attempt is rejected with a clear "already in progress" error instead of corrupting state
 - **`kelvinToMired` could return `NaN` or `Infinity`** — a zero or invalid Kelvin input passed straight through to the HomeKit color-temperature characteristic instead of being clamped; now falls back to 140 mireds
 - **Plugin UI always showed "Checking…" for the full 5 seconds on open** — `/auth-status` was fetched via a one-time server push sent at UI-process construction, but homebridge-config-ui-x reuses the same long-lived UI process across page loads, so only the very first page load ever saw that push; every later visit waited out the full timeout for a push that would never arrive; `/auth-status` now uses plain request/response (dispatched fresh on every call, regardless of process age), which is what it should have used all along since it's a fast local read with no risk of hanging
+- **`excludedDevices` matching was case-sensitive** — inconsistent with the case-insensitive `friendlyName` matching already used for fan/light dedup in `hubspace-client.ts`; a case mismatch in a hand-typed exclusion list would silently exclude nothing; matching is now case-insensitive, and any exclusion entry that doesn't match a discovered device now logs a warning to help catch typos
 
 ### Internal
 

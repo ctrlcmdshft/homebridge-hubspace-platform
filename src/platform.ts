@@ -154,9 +154,16 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     const excludedDevices = (Array.isArray(rawExcluded) ? rawExcluded : (rawExcluded ?? '').split(','))
       .map(name => name.trim())
       .filter(Boolean);
+    // Case-insensitive, matching the friendlyName-keyed dedup convention in
+    // hubspace-client.ts — users hand-type these names, so a case mismatch
+    // shouldn't silently fail to exclude anything.
+    const excludedLower = new Set(excludedDevices.map(name => name.toLowerCase()));
+    const matchedExclusions = new Set<string>();
 
     for (const device of devices) {
-      if (excludedDevices.includes(device.friendlyName)) {
+      const friendlyLower = device.friendlyName.toLowerCase();
+      if (excludedLower.has(friendlyLower)) {
+        matchedExclusions.add(friendlyLower);
         this.log.info(`Skipping excluded device: "${device.friendlyName}"`);
         continue;
       }
@@ -227,6 +234,12 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         );
         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [pAccessory]);
         this.cachedAccessories.delete(uuid);
+      }
+    }
+
+    for (const name of excludedDevices) {
+      if (!matchedExclusions.has(name.toLowerCase())) {
+        this.log.warn(`excludedDevices entry "${name}" did not match any discovered device — check for a typo.`);
       }
     }
 

@@ -167,6 +167,15 @@ describe('kelvinToMired', () => {
   it('clamps high values to 500', () => {
     expect(kelvinToMired(1000)).toBe(500);
   });
+
+  it('falls back to 140 for NaN input', () => {
+    expect(kelvinToMired(NaN)).toBe(140);
+  });
+
+  it('falls back to 140 for zero or negative input', () => {
+    expect(kelvinToMired(0)).toBe(140);
+    expect(kelvinToMired(-100)).toBe(140);
+  });
 });
 
 describe('miredToKelvin', () => {
