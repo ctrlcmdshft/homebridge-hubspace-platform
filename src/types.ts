@@ -26,6 +26,8 @@ export interface HubspaceConfig {
   disableConclave?: boolean;
   /** Invert outlet/plug on-state (for devices that report state backwards; default false). */
   invertOutletStatus?: boolean;
+  /** Friendly names of devices to skip during discovery (e.g. ["Ceiling Light"]). */
+  excludedDevices?: string[];
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

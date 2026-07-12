@@ -147,8 +147,14 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.log.info(`Cloud returned ${devices.length} device(s).`);
 
     const seenUUIDs = new Set<string>();
+    const excludedDevices = this.cfg.excludedDevices ?? [];
 
     for (const device of devices) {
+      if (excludedDevices.includes(device.friendlyName)) {
+        this.log.info(`Skipping excluded device: "${device.friendlyName}"`);
+        continue;
+      }
+
       if (!SUPPORTED_DEVICE_CLASSES.has(device.deviceClass.toLowerCase())) {
         const caps = [...new Set(device.values.map(v => v.functionClass))].join(', ') || 'none';
         const mfr = [device.manufacturerName, device.model].filter(Boolean).join(' / ') || 'unknown';

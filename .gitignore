@@ -26,6 +26,9 @@ hubspace-tokens.json
 # Test coverage
 coverage/
 
+# npm pack output
+*.tgz
+
 # Local dev scripts and dumps
 api-dump.txt
 discover.mjs

@@ -6,6 +6,7 @@
 
 - **Portable AC support** — new `PortableAcAccessory` exposes Hubspace portable air conditioners as HomeKit **HeaterCooler** tiles; supports power on/off, cooling threshold temperature, current temperature (read-only), and fan speed (auto / low / high via RotationSpeed slider at 33 / 66 / 99%); overload and sensor faults surface as `StatusFault`; tested against Vissani VAP05R1AWT
 - **Landscape lighting transformer support** — new `LandscapeTransformerAccessory` exposes Hampton Bay smart landscape transformers; provides a master power switch and one independent Switch tile per zone (`zone-1`, `zone-2`, `zone-3`); overload protection surfaces as `StatusFault`; zone count is detected automatically from device capabilities
+- **`excludedDevices` config option** — skip specific devices by friendly name during discovery (e.g. sub-devices Hubspace exposes that you don't want in HomeKit); defaults to none
 
 ### Bug Fixes
 
@@ -13,6 +14,10 @@
 - **AC fan speed slider resets to 0% when off** — same root cause as the fan flash; `getAcFanSpeed()` now returns the stored device speed regardless of power state, keeping the HomeKit slider at the last-used position
 - **Concurrent write 400 errors** — when HomeKit fired multiple `onSet` handlers simultaneously (e.g. power + fan speed on tile tap), each handler dispatched a separate HTTP PUT which the Hubspace API rejected with 400; `setDeviceValues()` now coalesces all patches queued within the same event-loop tick into a single PUT
 - **Write failure log shows sent payload** — error log on a failed SET STATE now includes the exact patch that was sent (functionClass, functionInstance, value) alongside the full API response body, making 400 errors diagnosable without enabling verbose mode
+- **Plugin UI login could hang indefinitely** — the login/2FA setup screen relied on a single request/response round-trip over Homebridge's IPC channel, so a dropped message left the UI spinning forever with no way to recover; the UI server now proactively pushes `auth-status`, `start-login`, and `submit-otp` results as IPC push events, and the browser races each one against a timeout (`waitForPush`/`withTimeout`) so a lost message surfaces an error or falls back instead of hanging
+- **Plugin UI could report "Connected" after a failed login** — if the `/start-login` push timed out, the UI assumed success and saved credentials regardless of the actual outcome; a timeout now surfaces a clear retry error instead
+- **Concurrent login/OTP requests could corrupt session state** — overlapping `/start-login` or `/submit-otp` IPC messages (e.g. a stale retry after a client-side timeout) could race and clobber the in-progress OTP session; these routes are now serialized so a second attempt is rejected with a clear "already in progress" error instead of corrupting state
+- **`kelvinToMired` could return `NaN` or `Infinity`** — a zero or invalid Kelvin input passed straight through to the HomeKit color-temperature characteristic instead of being clamped; now falls back to 140 mireds
 
 ### Internal
 

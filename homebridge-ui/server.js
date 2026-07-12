@@ -30,7 +30,11 @@ class PluginUiServer {
   }
 
   ready() {
-    process.send({ action: 'ready', payload: {} });
+    process.send({ action: 'ready', payload: { server: true } });
+  }
+
+  pushEvent(event, data) {
+    process.send({ action: 'push', payload: { event, data } });
   }
 
   async _dispatch({ requestId, path: route, body }) {
@@ -42,8 +46,11 @@ class PluginUiServer {
     try {
       const result = await handler(body || {});
       process.send({ action: 'response', payload: { requestId, success: true, data: result } });
+      this.pushEvent(route, { success: true, ...result });
     } catch (err) {
-      process.send({ action: 'error', payload: { requestId, success: false, data: err.message || String(err) } });
+      const msg = err.message || String(err);
+      process.send({ action: 'error', payload: { requestId, success: false, data: msg } });
+      this.pushEvent(route, { success: false, error: msg });
     }
   }
 }
@@ -52,11 +59,17 @@ class HubspaceUiServer extends PluginUiServer {
   constructor() {
     super();
     this._otpSession = null;
+    this._loginInFlight = false;
 
     this.onRequest('/auth-status', this.getAuthStatus.bind(this));
     this.onRequest('/start-login', this.startLogin.bind(this));
     this.onRequest('/submit-otp', this.submitOtp.bind(this));
     this.ready();
+
+    // Proactively push auth status so the browser doesn't need to send a request
+    this.getAuthStatus()
+      .then(s => this.pushEvent('/auth-status', s))
+      .catch(() => this.pushEvent('/auth-status', { cached: false, valid: false, username: null }));
   }
 
   tokenCachePath() {
@@ -83,42 +96,48 @@ class HubspaceUiServer extends PluginUiServer {
 
   async startLogin({ username, password }) {
     if (!username || !password) throw new Error('Username and password are required.');
+    if (this._loginInFlight) throw new Error('A login attempt is already in progress. Please wait.');
 
-    const verifier = crypto.randomBytes(96).toString('base64url');
-    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+    this._loginInFlight = true;
+    try {
+      const verifier = crypto.randomBytes(96).toString('base64url');
+      const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
 
-    const params = new URLSearchParams({
-      client_id: IOS_CLIENT, response_type: 'code',
-      redirect_uri: REDIRECT_URI, scope: 'openid offline_access',
-      code_challenge: challenge, code_challenge_method: 'S256',
-    });
-    const r1 = await this._get(AUTH_ENDPOINT + '?' + params);
-    const cookies = this._parseCookies(r1.headers['set-cookie']);
-    const action = this._extractFormAction(r1.body);
-    if (!action) throw new Error('Could not parse Hubspace login page. Please try again.');
+      const params = new URLSearchParams({
+        client_id: IOS_CLIENT, response_type: 'code',
+        redirect_uri: REDIRECT_URI, scope: 'openid offline_access',
+        code_challenge: challenge, code_challenge_method: 'S256',
+      });
+      const r1 = await this._get(AUTH_ENDPOINT + '?' + params);
+      const cookies = this._parseCookies(r1.headers['set-cookie']);
+      const action = this._extractFormAction(r1.body);
+      if (!action) throw new Error('Could not parse Hubspace login page. Please try again.');
 
-    const credBody = new URLSearchParams({ username, password }).toString();
-    const r2 = await this._post(action, credBody, cookies);
+      const credBody = new URLSearchParams({ username, password }).toString();
+      const r2 = await this._post(action, credBody, cookies);
 
-    if (r2.status === 302 && r2.headers['location']?.startsWith('hubspace-app://')) {
-      const code = this._extractCode(r2.headers['location']);
-      await this._exchangeAndSave(code, verifier, username);
-      return { success: true, needed2fa: false };
+      if (r2.status === 302 && r2.headers['location']?.startsWith('hubspace-app://')) {
+        const code = this._extractCode(r2.headers['location']);
+        await this._exchangeAndSave(code, verifier, username);
+        return { success: true, needed2fa: false };
+      }
+
+      if (r2.status === 200 && this._isOtpPage(r2.body)) {
+        const otpAction = this._extractFormAction(r2.body);
+        if (!otpAction) throw new Error('Could not parse 2FA page. Please try again.');
+        const cookies2 = this._mergeCookies(cookies, this._parseCookies(r2.headers['set-cookie']));
+        this._otpSession = { otpAction, cookies: cookies2, verifier, username };
+        return { success: false, needed2fa: true };
+      }
+
+      if (r2.body && (r2.body.includes('Invalid username or password') || r2.body.includes('login-error'))) {
+        throw new Error('Invalid username or password.');
+      }
+
+      throw new Error(`Unexpected response from Hubspace (HTTP ${r2.status}). Body preview: ${r2.body?.slice(0, 200)}`);
+    } finally {
+      this._loginInFlight = false;
     }
-
-    if (r2.status === 200 && this._isOtpPage(r2.body)) {
-      const otpAction = this._extractFormAction(r2.body);
-      if (!otpAction) throw new Error('Could not parse 2FA page. Please try again.');
-      const cookies2 = this._mergeCookies(cookies, this._parseCookies(r2.headers['set-cookie']));
-      this._otpSession = { otpAction, cookies: cookies2, verifier, username };
-      return { success: false, needed2fa: true };
-    }
-
-    if (r2.body && (r2.body.includes('Invalid username or password') || r2.body.includes('login-error'))) {
-      throw new Error('Invalid username or password.');
-    }
-
-    throw new Error(`Unexpected response from Hubspace (HTTP ${r2.status}). Body preview: ${r2.body?.slice(0, 200)}`);
   }
 
   // ─── submit-otp ───────────────────────────────────────────────────────────────
@@ -126,29 +145,35 @@ class HubspaceUiServer extends PluginUiServer {
   async submitOtp({ emailCode }) {
     if (!this._otpSession) throw new Error('No active login session. Please click "Start Login" again.');
     if (!emailCode || !/^\d{6}$/.test(emailCode.trim())) throw new Error('Enter the 6-digit code from your email.');
+    if (this._loginInFlight) throw new Error('A login attempt is already in progress. Please wait.');
 
-    const { otpAction, cookies, verifier, username } = this._otpSession;
+    this._loginInFlight = true;
+    try {
+      const { otpAction, cookies, verifier, username } = this._otpSession;
 
-    const otpBody = new URLSearchParams({
-      action: 'submit',
-      flowName: 'doLogIn',
-      emailCode: emailCode.trim(),
-    }).toString();
+      const otpBody = new URLSearchParams({
+        action: 'submit',
+        flowName: 'doLogIn',
+        emailCode: emailCode.trim(),
+      }).toString();
 
-    const r3 = await this._post(otpAction, otpBody, cookies);
+      const r3 = await this._post(otpAction, otpBody, cookies);
 
-    if (r3.status === 302 && r3.headers['location']?.startsWith('hubspace-app://')) {
-      const code = this._extractCode(r3.headers['location']);
-      await this._exchangeAndSave(code, verifier, username);
-      this._otpSession = null;
-      return { success: true };
+      if (r3.status === 302 && r3.headers['location']?.startsWith('hubspace-app://')) {
+        const code = this._extractCode(r3.headers['location']);
+        await this._exchangeAndSave(code, verifier, username);
+        this._otpSession = null;
+        return { success: true };
+      }
+
+      if (r3.status === 200 && this._isOtpPage(r3.body)) {
+        throw new Error('Incorrect or expired code. Check your email and try again.');
+      }
+
+      throw new Error(`Unexpected response (HTTP ${r3.status}). Please start over.`);
+    } finally {
+      this._loginInFlight = false;
     }
-
-    if (r3.status === 200 && this._isOtpPage(r3.body)) {
-      throw new Error('Incorrect or expired code. Check your email and try again.');
-    }
-
-    throw new Error(`Unexpected response (HTTP ${r3.status}). Please start over.`);
   }
 
   // ─── PKCE token exchange + cache write ────────────────────────────────────────
