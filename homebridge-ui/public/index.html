@@ -237,12 +237,18 @@ homebridge.addEventListener('ready', async () => {
           const configs = await homebridge.getPluginConfig();
           const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
           await homebridge.updatePluginConfig([{ ...existing, username, password }]);
+          await homebridge.savePluginConfig();
         } catch { /* non-fatal */ }
-        hide('step-creds');
-        show('step-success');
         $('status-dot').className = 'dot dot-green';
         $('status-label').textContent = 'Connected';
         $('status-sub').textContent = `Signed in as ${username}`;
+        hide('step-creds');
+        show('step-success');
+        setTimeout(() => {
+          hide('setup-card');
+          $('connected-user').textContent = username;
+          show('connected-card');
+        }, 2000);
       } else if (result.needed2fa) {
         hide('step-creds');
         show('step-otp');
@@ -261,20 +267,26 @@ homebridge.addEventListener('ready', async () => {
     setLoading('btn-otp', 'btn-otp-spinner', true);
     try {
       await homebridge.request('/submit-otp', { emailCode: getOtpCode() });
+      const username = $('inp-username').value.trim();
+      const password = $('inp-password').value;
       try {
         const configs = await homebridge.getPluginConfig();
         const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
-        const username = $('inp-username').value.trim();
-        const password = $('inp-password').value;
         if (username && password) {
           await homebridge.updatePluginConfig([{ ...existing, username, password }]);
+          await homebridge.savePluginConfig();
         }
       } catch { /* non-fatal */ }
-      hide('step-otp');
-      show('step-success');
       $('status-dot').className = 'dot dot-green';
       $('status-label').textContent = 'Connected';
-      $('status-sub').textContent = '';
+      $('status-sub').textContent = username ? `Signed in as ${username}` : '';
+      hide('step-otp');
+      show('step-success');
+      setTimeout(() => {
+        hide('setup-card');
+        $('connected-user').textContent = username || 'Connected';
+        show('connected-card');
+      }, 2000);
     } catch (err) {
       setAlert('otp-alert', err?.message ?? err ?? 'Invalid code. Please try again.');
       clearOtp();
