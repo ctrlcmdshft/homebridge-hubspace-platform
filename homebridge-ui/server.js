@@ -30,12 +30,10 @@ class PluginUiServer {
   }
 
   ready() {
-    console.log(`[HubspaceUI] ready() at ${Date.now()}`);
     process.send({ action: 'ready', payload: { server: true } });
   }
 
   pushEvent(event, data) {
-    console.log(`[HubspaceUI] pushEvent(${event}) at ${Date.now()}`);
     process.send({ action: 'push', payload: { event, data } });
   }
 
@@ -67,11 +65,6 @@ class HubspaceUiServer extends PluginUiServer {
     this.onRequest('/start-login', this.startLogin.bind(this));
     this.onRequest('/submit-otp', this.submitOtp.bind(this));
     this.ready();
-
-    // Proactively push auth status so the browser doesn't need to send a request
-    this.getAuthStatus()
-      .then(s => this.pushEvent('/auth-status', s))
-      .catch(() => this.pushEvent('/auth-status', { cached: false, valid: false, username: null }));
   }
 
   tokenCachePath() {
