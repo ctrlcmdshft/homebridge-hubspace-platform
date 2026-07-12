@@ -6,7 +6,7 @@
 
 - **Portable AC support** — new `PortableAcAccessory` exposes Hubspace portable air conditioners as HomeKit **HeaterCooler** tiles; supports power on/off, cooling threshold temperature, current temperature (read-only), and fan speed (auto / low / high via RotationSpeed slider at 33 / 66 / 99%); overload and sensor faults surface as `StatusFault`; tested against Vissani VAP05R1AWT
 - **Landscape lighting transformer support** — new `LandscapeTransformerAccessory` exposes Hampton Bay smart landscape transformers; provides a master power switch and one independent Switch tile per zone (`zone-1`, `zone-2`, `zone-3`); overload protection surfaces as `StatusFault`; zone count is detected automatically from device capabilities
-- **`excludedDevices` config option** — skip specific devices by friendly name during discovery (e.g. sub-devices Hubspace exposes that you don't want in HomeKit); defaults to none
+- **`excludedDevices` config option** — comma-separated friendly names of devices to skip during discovery (e.g. `Bulb, Outdoor plug`); useful for sub-devices Hubspace exposes that you don't want in HomeKit; defaults to none
 
 ### Bug Fixes
 
@@ -18,7 +18,6 @@
 - **Plugin UI could report "Connected" after a failed login** — if the `/start-login` push timed out, the UI assumed success and saved credentials regardless of the actual outcome; a timeout now surfaces a clear retry error instead
 - **Concurrent login/OTP requests could corrupt session state** — overlapping `/start-login` or `/submit-otp` IPC messages (e.g. a stale retry after a client-side timeout) could race and clobber the in-progress OTP session; these routes are now serialized so a second attempt is rejected with a clear "already in progress" error instead of corrupting state
 - **`kelvinToMired` could return `NaN` or `Infinity`** — a zero or invalid Kelvin input passed straight through to the HomeKit color-temperature characteristic instead of being clamped; now falls back to 140 mireds
-- **`excludedDevices` had no input control in the plugin UI** — the field was listed by key name in the config layout, which only renders simple types; string arrays need the array-editor layout block, so no add/remove control appeared; fixed
 - **Plugin UI always showed "Checking…" for the full 5 seconds on open** — `/auth-status` was fetched via a one-time server push sent at UI-process construction, but homebridge-config-ui-x reuses the same long-lived UI process across page loads, so only the very first page load ever saw that push; every later visit waited out the full timeout for a push that would never arrive; `/auth-status` now uses plain request/response (dispatched fresh on every call, regardless of process age), which is what it should have used all along since it's a fast local read with no risk of hanging
 
 ### Internal
