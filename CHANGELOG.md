@@ -23,6 +23,7 @@
 
 ### Internal
 
+- **Added `test/platform.test.ts`** — covers `discoverDevices()`'s `excludedDevices` filtering (string and legacy array formats, case-insensitivity, typo warnings) and the unsupported-deviceClass path, which previously had no test coverage at all
 - **Removed `src/dump-devices.ts`** — the old TypeScript dump script compiled to `dist/dump-devices.js` and shipped unnecessarily in the npm tarball; it also lacked 2FA support; `npm run dump` now runs `scripts/dump-devices.js` directly (the 2FA-capable standalone version) without requiring a build step first
 - **Removed unused `@homebridge/plugin-ui-utils` dependency** — never imported; `homebridge-ui/server.js` implements its own minimal IPC class instead
 
