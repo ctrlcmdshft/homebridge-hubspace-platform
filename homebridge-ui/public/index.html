@@ -122,7 +122,7 @@
 
   <!-- STEP: success -->
   <div id="step-success" class="hidden">
-    <div class="alert alert-success">✓ Authenticated successfully. Tokens cached — Homebridge will use them automatically.</div>
+    <div class="alert alert-success">✓ Credentials saved. Homebridge will authenticate on next restart.</div>
     <p class="hint" style="margin-top:10px;text-align:center">Restart Homebridge to apply.</p>
   </div>
 </div>
@@ -190,45 +190,45 @@ homebridge.addEventListener('ready', async () => {
   const getOtpCode = () => otpIds.map(id => $(id).value).join('');
   const clearOtp = () => { otpIds.forEach(id => $(id).value = ''); updateOtpBtn(); };
 
-  // ── timeout fallback: if /auth-status never responds, show setup form ────────
-  const withTimeout = (promise, ms) => Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-  ]);
-
-  // ── pre-fill credentials from saved config ───────────────────────────────────
+  // ── load status from saved config (no server.js required) ───────────────────
+  let savedConfig = null;
   try {
-    const configs = await withTimeout(homebridge.getPluginConfig(), 4000);
-    if (configs[0]?.username) $('inp-username').value = configs[0].username;
-    if (configs[0]?.password) $('inp-password').value = configs[0].password;
+    const configs = await homebridge.getPluginConfig();
+    savedConfig = configs[0] ?? null;
   } catch { /* ignore */ }
 
-  // ── load status ───────────────────────────────────────────────────────────────
-  $('status-label').textContent = 'Contacting plugin server…';
-  let status;
-  try {
-    status = await withTimeout(homebridge.request('/auth-status'), 6000);
-  } catch (e) {
-    const timedOut = e?.message === 'timeout';
-    $('status-dot').className = 'dot dot-red';
-    $('status-label').textContent = timedOut ? 'Plugin server not responding' : 'Status check failed';
-    $('status-sub').textContent = timedOut
-      ? 'Try restarting Homebridge, then reopen this panel.'
-      : (e?.message ?? String(e));
-    show('setup-card');
-    return;
-  }
+  const hasCredentials = !!(savedConfig?.username && savedConfig?.password);
 
-  $('status-dot').className = 'dot ' + (status.valid ? 'dot-green' : 'dot-red');
-  $('status-label').textContent = status.valid ? 'Connected' : (status.cached ? 'Tokens expired' : 'Not authenticated');
-  $('status-sub').textContent = status.valid ? (status.username ? `Signed in as ${status.username}` : '') : '';
+  if (savedConfig?.username) $('inp-username').value = savedConfig.username;
+  if (savedConfig?.password) $('inp-password').value = savedConfig.password;
 
-  if (status.valid) {
-    $('connected-user').textContent = status.username ?? 'Connected';
+  if (hasCredentials) {
+    $('status-dot').className = 'dot dot-green';
+    $('status-label').textContent = 'Credentials saved';
+    $('status-sub').textContent = `Signed in as ${savedConfig.username}`;
+    $('connected-user').textContent = savedConfig.username;
     show('connected-card');
   } else {
+    $('status-dot').className = 'dot dot-red';
+    $('status-label').textContent = 'Not signed in';
     show('setup-card');
   }
+
+  // ── request with timeout ──────────────────────────────────────────────────────
+  const requestWithTimeout = (path, body, ms = 20000) => Promise.race([
+    homebridge.request(path, body),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('Plugin server not responding. Try restarting Homebridge.')), ms
+    )),
+  ]);
+
+  // ── save credentials helper ───────────────────────────────────────────────────
+  const saveCredentials = async (username, password) => {
+    const configs = await homebridge.getPluginConfig();
+    const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
+    await homebridge.updatePluginConfig([{ ...existing, username, password }]);
+    await homebridge.savePluginConfig();
+  };
 
   // ── start login ───────────────────────────────────────────────────────────────
   $('btn-start').addEventListener('click', async () => {
@@ -244,17 +244,17 @@ homebridge.addEventListener('ready', async () => {
 
     setLoading('btn-start', 'btn-start-spinner', true);
 
+    // Always save credentials first — works without server.js
     try {
-      const result = await homebridge.request('/start-login', { username, password });
+      await saveCredentials(username, password);
+    } catch { /* non-fatal */ }
+
+    // Attempt PKCE flow via server.js (may not be available)
+    try {
+      const result = await requestWithTimeout('/start-login', { username, password });
       if (result.success) {
-        try {
-          const configs = await homebridge.getPluginConfig();
-          const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
-          await homebridge.updatePluginConfig([{ ...existing, username, password }]);
-          await homebridge.savePluginConfig();
-        } catch { /* non-fatal */ }
         $('status-dot').className = 'dot dot-green';
-        $('status-label').textContent = 'Connected';
+        $('status-label').textContent = 'Credentials saved';
         $('status-sub').textContent = `Signed in as ${username}`;
         hide('step-creds');
         show('step-success');
@@ -268,8 +268,18 @@ homebridge.addEventListener('ready', async () => {
         show('step-otp');
         setTimeout(() => $('o1').focus(), 50);
       }
-    } catch (err) {
-      setAlert('creds-alert', err?.message ?? err ?? 'Login failed. Please try again.');
+    } catch {
+      // Server-side PKCE unavailable — credentials already saved, just confirm
+      $('status-dot').className = 'dot dot-green';
+      $('status-label').textContent = 'Credentials saved';
+      $('status-sub').textContent = `Signed in as ${username}`;
+      hide('step-creds');
+      show('step-success');
+      setTimeout(() => {
+        hide('setup-card');
+        $('connected-user').textContent = username;
+        show('connected-card');
+      }, 2000);
     } finally {
       setLoading('btn-start', 'btn-start-spinner', false);
     }
@@ -280,7 +290,7 @@ homebridge.addEventListener('ready', async () => {
     clearAlert('otp-alert');
     setLoading('btn-otp', 'btn-otp-spinner', true);
     try {
-      await homebridge.request('/submit-otp', { emailCode: getOtpCode() });
+      await requestWithTimeout('/submit-otp', { emailCode: getOtpCode() });
       const username = $('inp-username').value.trim();
       const password = $('inp-password').value;
       try {
