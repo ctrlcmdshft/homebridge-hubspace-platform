@@ -222,9 +222,10 @@ homebridge.addEventListener('ready', async () => {
   // that will never come. A request dispatches fresh every time regardless of
   // process age, so it's the correct tool for this simple, fast local read.
   let savedConfig = {};
+  const _t0 = Date.now();
   const [cfgs, statusResult] = await Promise.all([
-    withTimeout(homebridge.getPluginConfig(), 4000),
-    withTimeout(homebridge.request('/auth-status'), 5000),
+    withTimeout(homebridge.getPluginConfig(), 4000).then(r => { console.log(`[HubspaceUI] getPluginConfig settled (${r ? 'resolved' : 'TIMED OUT'}) after ${Date.now() - _t0}ms`); return r; }),
+    withTimeout(homebridge.request('/auth-status'), 5000).then(r => { console.log(`[HubspaceUI] auth-status settled (${r ? 'resolved' : 'TIMED OUT'}) after ${Date.now() - _t0}ms`); return r; }),
   ]);
   if (cfgs) {
     savedConfig = cfgs[0] ?? {};
