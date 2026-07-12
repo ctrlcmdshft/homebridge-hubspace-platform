@@ -147,7 +147,13 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.log.info(`Cloud returned ${devices.length} device(s).`);
 
     const seenUUIDs = new Set<string>();
-    const excludedDevices = this.cfg.excludedDevices ?? [];
+    // Accept both the current comma-separated string and the array shape used
+    // by earlier prerelease versions, so upgrading doesn't drop an existing
+    // exclusion list saved in config.json.
+    const rawExcluded = this.cfg.excludedDevices as string | string[] | undefined;
+    const excludedDevices = (Array.isArray(rawExcluded) ? rawExcluded : (rawExcluded ?? '').split(','))
+      .map(name => name.trim())
+      .filter(Boolean);
 
     for (const device of devices) {
       if (excludedDevices.includes(device.friendlyName)) {

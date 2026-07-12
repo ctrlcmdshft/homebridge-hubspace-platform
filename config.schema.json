@@ -83,12 +83,9 @@
       },
       "excludedDevices": {
         "title": "Excluded Devices",
-        "type": "array",
-        "default": [],
-        "items": {
-          "type": "string"
-        },
-        "description": "Friendly names of devices to skip during discovery (e.g. \"Ceiling Light\"). Useful when Hubspace exposes sub-devices you do not want in HomeKit."
+        "type": "string",
+        "default": "",
+        "description": "Comma-separated friendly names of devices to skip during discovery (e.g. \"Bulb, Outdoor plug, Tape light\"). Useful when Hubspace exposes sub-devices you do not want in HomeKit."
       }
     },
     "required": ["username", "password"],
@@ -117,13 +114,7 @@
         "exposeMasterPowerSwitch",
         "exposeStatusFault",
         "invertOutletStatus",
-        {
-          "key": "excludedDevices",
-          "type": "array",
-          "items": [
-            "excludedDevices[]"
-          ]
-        }
+        "excludedDevices"
       ]
     },
     {
