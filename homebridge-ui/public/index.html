@@ -214,6 +214,11 @@ homebridge.addEventListener('ready', async () => {
     await homebridge.savePluginConfig();
   }
 
+  // ── load status — server pushes '/auth-status' proactively right after its own
+  // ready(). Register this listener FIRST, before any other await, so we don't
+  // miss the push while waiting on the (slower) getPluginConfig round-trip below.
+  const statusPromise = waitForPush('/auth-status', 5000);
+
   // ── pre-fill credentials from saved config ───────────────────────────────────
   let savedConfig = {};
   const cfgs = await withTimeout(homebridge.getPluginConfig(), 4000);
@@ -223,10 +228,9 @@ homebridge.addEventListener('ready', async () => {
     if (savedConfig.password) $('inp-password').value = savedConfig.password;
   }
 
-  // ── load status — server pushes '/auth-status' proactively after ready() ─────
   let status;
   try {
-    status = await waitForPush('/auth-status', 5000);
+    status = await statusPromise;
   } catch {
     const hasCreds = !!(savedConfig.username && savedConfig.password);
     status = { cached: hasCreds, valid: hasCreds, username: savedConfig.username ?? null };

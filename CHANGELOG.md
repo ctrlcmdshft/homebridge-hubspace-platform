@@ -18,6 +18,8 @@
 - **Plugin UI could report "Connected" after a failed login** — if the `/start-login` push timed out, the UI assumed success and saved credentials regardless of the actual outcome; a timeout now surfaces a clear retry error instead
 - **Concurrent login/OTP requests could corrupt session state** — overlapping `/start-login` or `/submit-otp` IPC messages (e.g. a stale retry after a client-side timeout) could race and clobber the in-progress OTP session; these routes are now serialized so a second attempt is rejected with a clear "already in progress" error instead of corrupting state
 - **`kelvinToMired` could return `NaN` or `Infinity`** — a zero or invalid Kelvin input passed straight through to the HomeKit color-temperature characteristic instead of being clamped; now falls back to 140 mireds
+- **`excludedDevices` had no input control in the plugin UI** — the field was listed by key name in the config layout, which only renders simple types; string arrays need the array-editor layout block, so no add/remove control appeared; fixed
+- **Plugin UI always showed "Checking…" for the full 5 seconds on open** — the browser registered its `/auth-status` push listener only after awaiting `getPluginConfig()`, so it consistently missed the server's proactive push sent right after `ready()` and fell through to the timeout every time; the listener is now registered before that await so the real status arrives immediately
 
 ### Internal
 

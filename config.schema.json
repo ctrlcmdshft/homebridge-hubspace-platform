@@ -84,6 +84,7 @@
       "excludedDevices": {
         "title": "Excluded Devices",
         "type": "array",
+        "default": [],
         "items": {
           "type": "string"
         },
@@ -111,7 +112,19 @@
     {
       "type": "fieldset",
       "title": "Device Options",
-      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault", "invertOutletStatus", "excludedDevices"]
+      "items": [
+        "exposeComfortBreeze",
+        "exposeMasterPowerSwitch",
+        "exposeStatusFault",
+        "invertOutletStatus",
+        {
+          "key": "excludedDevices",
+          "type": "array",
+          "items": [
+            "excludedDevices[]"
+          ]
+        }
+      ]
     },
     {
       "type": "fieldset",
