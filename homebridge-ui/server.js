@@ -30,10 +30,12 @@ class PluginUiServer {
   }
 
   ready() {
+    console.log(`[HubspaceUI] ready() at ${Date.now()}`);
     process.send({ action: 'ready', payload: { server: true } });
   }
 
   pushEvent(event, data) {
+    console.log(`[HubspaceUI] pushEvent(${event}) at ${Date.now()}`);
     process.send({ action: 'push', payload: { event, data } });
   }
 

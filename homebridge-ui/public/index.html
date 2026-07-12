@@ -144,6 +144,7 @@
 
 <script>
 homebridge.addEventListener('ready', async () => {
+  console.log(`[HubspaceUI] browser 'ready' fired at ${Date.now()}`);
   homebridge.showSchemaForm();
 
   // ── helpers ──────────────────────────────────────────────────────────────────
@@ -217,6 +218,7 @@ homebridge.addEventListener('ready', async () => {
   // ── load status — server pushes '/auth-status' proactively right after its own
   // ready(). Register this listener FIRST, before any other await, so we don't
   // miss the push while waiting on the (slower) getPluginConfig round-trip below.
+  console.log(`[HubspaceUI] registering /auth-status listener at ${Date.now()}`);
   const statusPromise = waitForPush('/auth-status', 5000);
 
   // ── pre-fill credentials from saved config ───────────────────────────────────
@@ -231,7 +233,9 @@ homebridge.addEventListener('ready', async () => {
   let status;
   try {
     status = await statusPromise;
+    console.log(`[HubspaceUI] /auth-status push received at ${Date.now()}`);
   } catch {
+    console.log(`[HubspaceUI] /auth-status push TIMED OUT at ${Date.now()}`);
     const hasCreds = !!(savedConfig.username && savedConfig.password);
     status = { cached: hasCreds, valid: hasCreds, username: savedConfig.username ?? null };
   }
