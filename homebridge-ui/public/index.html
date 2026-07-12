@@ -144,7 +144,6 @@
 
 <script>
 homebridge.addEventListener('ready', async () => {
-  console.log(`[HubspaceUI] browser 'ready' fired at ${Date.now()}`);
   homebridge.showSchemaForm();
 
   // ── helpers ──────────────────────────────────────────────────────────────────
@@ -215,30 +214,29 @@ homebridge.addEventListener('ready', async () => {
     await homebridge.savePluginConfig();
   }
 
-  // ── load status — server pushes '/auth-status' proactively right after its own
-  // ready(). Register this listener FIRST, before any other await, so we don't
-  // miss the push while waiting on the (slower) getPluginConfig round-trip below.
-  console.log(`[HubspaceUI] registering /auth-status listener at ${Date.now()}`);
-  const statusPromise = waitForPush('/auth-status', 5000);
-
-  // ── pre-fill credentials from saved config ───────────────────────────────────
+  // ── pre-fill credentials + load status ────────────────────────────────────────
+  // Plain request/response (not push) for /auth-status: homebridge-config-ui-x
+  // reuses the same long-lived UI server process across page loads, so a
+  // proactive push sent once at process construction is only ever seen by the
+  // very first page load — every later visit waits the full timeout for a push
+  // that will never come. A request dispatches fresh every time regardless of
+  // process age, so it's the correct tool for this simple, fast local read.
   let savedConfig = {};
-  const cfgs = await withTimeout(homebridge.getPluginConfig(), 4000);
+  const [cfgs, statusResult] = await Promise.all([
+    withTimeout(homebridge.getPluginConfig(), 4000),
+    withTimeout(homebridge.request('/auth-status'), 5000),
+  ]);
   if (cfgs) {
     savedConfig = cfgs[0] ?? {};
     if (savedConfig.username) $('inp-username').value = savedConfig.username;
     if (savedConfig.password) $('inp-password').value = savedConfig.password;
   }
 
-  let status;
-  try {
-    status = await statusPromise;
-    console.log(`[HubspaceUI] /auth-status push received at ${Date.now()}`);
-  } catch {
-    console.log(`[HubspaceUI] /auth-status push TIMED OUT at ${Date.now()}`);
-    const hasCreds = !!(savedConfig.username && savedConfig.password);
-    status = { cached: hasCreds, valid: hasCreds, username: savedConfig.username ?? null };
-  }
+  const status = statusResult ?? {
+    cached: !!(savedConfig.username && savedConfig.password),
+    valid: !!(savedConfig.username && savedConfig.password),
+    username: savedConfig.username ?? null,
+  };
 
   $('status-dot').className = 'dot ' + (status.valid ? 'dot-green' : 'dot-red');
   $('status-label').textContent = status.valid ? 'Connected' : (status.cached ? 'Tokens expired' : 'Not authenticated');
