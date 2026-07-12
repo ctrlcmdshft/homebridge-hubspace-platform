@@ -214,20 +214,24 @@ homebridge.addEventListener('ready', async () => {
     show('setup-card');
   }
 
-  // ── request with timeout ──────────────────────────────────────────────────────
-  const requestWithTimeout = (path, body, ms = 20000) => Promise.race([
-    homebridge.request(path, body),
-    new Promise((_, reject) => setTimeout(
-      () => reject(new Error('Plugin server not responding. Try restarting Homebridge.')), ms
-    )),
+  // ── with timeout helper ───────────────────────────────────────────────────────
+  const withTimeout = (promise, ms) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
   ]);
 
-  // ── save credentials helper ───────────────────────────────────────────────────
-  const saveCredentials = async (username, password) => {
-    const configs = await homebridge.getPluginConfig();
-    const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
-    await homebridge.updatePluginConfig([{ ...existing, username, password }]);
-    await homebridge.savePluginConfig();
+  // ── show sign-in success ──────────────────────────────────────────────────────
+  const showSignedIn = (username) => {
+    $('status-dot').className = 'dot dot-green';
+    $('status-label').textContent = 'Credentials saved';
+    $('status-sub').textContent = `Signed in as ${username}`;
+    hide('step-creds');
+    show('step-success');
+    setTimeout(() => {
+      hide('setup-card');
+      $('connected-user').textContent = username;
+      show('connected-card');
+    }, 2000);
   };
 
   // ── start login ───────────────────────────────────────────────────────────────
@@ -244,44 +248,27 @@ homebridge.addEventListener('ready', async () => {
 
     setLoading('btn-start', 'btn-start-spinner', true);
 
-    // Always save credentials first — works without server.js
+    // Sync credentials to schema form so SAVE button persists them
     try {
-      await saveCredentials(username, password);
-    } catch { /* non-fatal */ }
+      const configs = await withTimeout(homebridge.getPluginConfig(), 3000);
+      const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
+      await withTimeout(homebridge.updatePluginConfig([{ ...existing, username, password }]), 3000);
+    } catch { /* non-fatal — SAVE button still works manually */ }
 
-    // Attempt PKCE flow via server.js (may not be available)
+    // Attempt PKCE flow via server.js (8s max, non-blocking on failure)
+    let pkceResult = null;
     try {
-      const result = await requestWithTimeout('/start-login', { username, password });
-      if (result.success) {
-        $('status-dot').className = 'dot dot-green';
-        $('status-label').textContent = 'Credentials saved';
-        $('status-sub').textContent = `Signed in as ${username}`;
-        hide('step-creds');
-        show('step-success');
-        setTimeout(() => {
-          hide('setup-card');
-          $('connected-user').textContent = username;
-          show('connected-card');
-        }, 2000);
-      } else if (result.needed2fa) {
-        hide('step-creds');
-        show('step-otp');
-        setTimeout(() => $('o1').focus(), 50);
-      }
-    } catch {
-      // Server-side PKCE unavailable — credentials already saved, just confirm
-      $('status-dot').className = 'dot dot-green';
-      $('status-label').textContent = 'Credentials saved';
-      $('status-sub').textContent = `Signed in as ${username}`;
+      pkceResult = await withTimeout(homebridge.request('/start-login', { username, password }), 8000);
+    } catch { /* server.js unavailable */ }
+
+    setLoading('btn-start', 'btn-start-spinner', false);
+
+    if (pkceResult?.needed2fa) {
       hide('step-creds');
-      show('step-success');
-      setTimeout(() => {
-        hide('setup-card');
-        $('connected-user').textContent = username;
-        show('connected-card');
-      }, 2000);
-    } finally {
-      setLoading('btn-start', 'btn-start-spinner', false);
+      show('step-otp');
+      setTimeout(() => $('o1').focus(), 50);
+    } else {
+      showSignedIn(username);
     }
   });
 
@@ -289,21 +276,9 @@ homebridge.addEventListener('ready', async () => {
   $('btn-otp').addEventListener('click', async () => {
     clearAlert('otp-alert');
     setLoading('btn-otp', 'btn-otp-spinner', true);
+    const username = $('inp-username').value.trim();
     try {
-      await requestWithTimeout('/submit-otp', { emailCode: getOtpCode() });
-      const username = $('inp-username').value.trim();
-      const password = $('inp-password').value;
-      try {
-        const configs = await homebridge.getPluginConfig();
-        const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
-        if (username && password) {
-          await homebridge.updatePluginConfig([{ ...existing, username, password }]);
-          await homebridge.savePluginConfig();
-        }
-      } catch { /* non-fatal */ }
-      $('status-dot').className = 'dot dot-green';
-      $('status-label').textContent = 'Connected';
-      $('status-sub').textContent = username ? `Signed in as ${username}` : '';
+      await withTimeout(homebridge.request('/submit-otp', { emailCode: getOtpCode() }), 15000);
       hide('step-otp');
       show('step-success');
       setTimeout(() => {
