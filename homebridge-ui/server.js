@@ -1,51 +1,15 @@
-'use strict';
-
-const crypto = require('crypto');
-const https = require('https');
-const fs = require('fs').promises;
-const path = require('path');
+import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
+import crypto from 'crypto';
+import https from 'https';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 const AUTH_ENDPOINT = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/auth';
 const TOKEN_ENDPOINT = 'https://accounts.hubspaceconnect.com/auth/realms/thd/protocol/openid-connect/token';
 const IOS_CLIENT = 'hubspace_ios';
 const REDIRECT_URI = 'hubspace-app://loginredirect';
 
-class PluginUiServer {
-  constructor() {
-    this.homebridgeStoragePath = process.env.HOMEBRIDGE_STORAGE_PATH || '';
-    this._handlers = new Map();
-
-    process.on('message', async (request) => {
-      if (request && request.action === 'request') {
-        await this._dispatch(request);
-      }
-    });
-  }
-
-  onRequest(route, handler) {
-    this._handlers.set(route, handler);
-  }
-
-  ready() {
-    process.send({ action: 'ready', payload: { server: true } });
-  }
-
-  async _dispatch({ requestId, path: route, body }) {
-    const handler = this._handlers.get(route);
-    if (!handler) {
-      process.send({ action: 'response', payload: { requestId, success: false, data: { message: `No handler for ${route}` } } });
-      return;
-    }
-    try {
-      const result = await handler(body || {});
-      process.send({ action: 'response', payload: { requestId, success: true, data: result } });
-    } catch (err) {
-      process.send({ action: 'response', payload: { requestId, success: false, data: { message: err.message || String(err) } } });
-    }
-  }
-}
-
-class HubspaceUiServer extends PluginUiServer {
+class HubspaceUiServer extends HomebridgePluginUiServer {
   constructor() {
     super();
     this._otpSession = null;
@@ -53,6 +17,7 @@ class HubspaceUiServer extends PluginUiServer {
     this.onRequest('/auth-status', this.getAuthStatus.bind(this));
     this.onRequest('/start-login', this.startLogin.bind(this));
     this.onRequest('/submit-otp', this.submitOtp.bind(this));
+
     this.ready();
   }
 
