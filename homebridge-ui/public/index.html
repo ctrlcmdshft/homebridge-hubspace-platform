@@ -190,19 +190,33 @@ homebridge.addEventListener('ready', async () => {
   const getOtpCode = () => otpIds.map(id => $(id).value).join('');
   const clearOtp = () => { otpIds.forEach(id => $(id).value = ''); updateOtpBtn(); };
 
+  // ── timeout fallback: if /auth-status never responds, show setup form ────────
+  const withTimeout = (promise, ms) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+
   // ── pre-fill credentials from saved config ───────────────────────────────────
   try {
-    const configs = await homebridge.getPluginConfig();
+    const configs = await withTimeout(homebridge.getPluginConfig(), 4000);
     if (configs[0]?.username) $('inp-username').value = configs[0].username;
     if (configs[0]?.password) $('inp-password').value = configs[0].password;
   } catch { /* ignore */ }
 
   // ── load status ───────────────────────────────────────────────────────────────
+  $('status-label').textContent = 'Contacting plugin server…';
   let status;
   try {
-    status = await homebridge.request('/auth-status');
-  } catch {
-    status = { cached: false, valid: false, username: null };
+    status = await withTimeout(homebridge.request('/auth-status'), 6000);
+  } catch (e) {
+    const timedOut = e?.message === 'timeout';
+    $('status-dot').className = 'dot dot-red';
+    $('status-label').textContent = timedOut ? 'Plugin server not responding' : 'Status check failed';
+    $('status-sub').textContent = timedOut
+      ? 'Try restarting Homebridge, then reopen this panel.'
+      : (e?.message ?? String(e));
+    show('setup-card');
+    return;
   }
 
   $('status-dot').className = 'dot ' + (status.valid ? 'dot-green' : 'dot-red');
