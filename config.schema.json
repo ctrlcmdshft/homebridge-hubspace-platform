@@ -80,6 +80,14 @@
         "type": "boolean",
         "default": false,
         "description": "Disable the real-time Conclave push connection and fall back to polling only. Use this if you experience persistent connection issues."
+      },
+      "excludedDevices": {
+        "title": "Excluded Devices",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Friendly names of devices to skip during discovery (e.g. \"Ceiling Light\"). Useful when Hubspace exposes sub-devices you do not want in HomeKit."
       }
     },
     "required": ["username", "password"],
@@ -103,7 +111,7 @@
     {
       "type": "fieldset",
       "title": "Device Options",
-      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault", "invertOutletStatus"]
+      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault", "invertOutletStatus", "excludedDevices"]
     },
     {
       "type": "fieldset",
