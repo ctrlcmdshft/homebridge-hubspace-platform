@@ -5,6 +5,8 @@ import {
   rgbToHex,
   kelvinToMired,
   miredToKelvin,
+  parseKelvin,
+  formatKelvinForHubspace,
   hubspeedToPercent,
   percentToHubspeed,
 } from '../src/utils';
@@ -182,6 +184,28 @@ describe('miredToKelvin', () => {
     const k = 3000;
     const mireds = kelvinToMired(k);
     expect(miredToKelvin(mireds)).toBeCloseTo(k, -2);
+  });
+});
+
+describe('parseKelvin', () => {
+  it('parses numeric, numeric-string, and K-suffixed values', () => {
+    expect(parseKelvin(4000)).toBe(4000);
+    expect(parseKelvin('4000')).toBe(4000);
+    expect(parseKelvin('4000K')).toBe(4000);
+    expect(parseKelvin('4000 k')).toBe(4000);
+  });
+
+  it('returns null for non-Kelvin values', () => {
+    expect(parseKelvin('warm-white')).toBeNull();
+    expect(parseKelvin(undefined)).toBeNull();
+  });
+});
+
+describe('formatKelvinForHubspace', () => {
+  it('preserves the current Hubspace color-temperature value shape', () => {
+    expect(formatKelvinForHubspace(4505, 4000)).toBe(4505);
+    expect(formatKelvinForHubspace(4505, '4000')).toBe('4505');
+    expect(formatKelvinForHubspace(4505, '4000K')).toBe('4505K');
   });
 });
 

@@ -546,6 +546,42 @@ describe('LightAccessory', () => {
     });
   });
 
+  describe('color temperature', () => {
+    it('parses K-suffixed Hubspace color-temperature values', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.COLOR_TEMP, '4000K')]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+
+      lightAcc.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('ColorTemperature', 250);
+    });
+
+    it('preserves K-suffixed color-temperature format when writing', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.COLOR_TEMP, '4000K')]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const onSetColorTemperature: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetColorTemperature(222);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '4505K' }),
+      ]);
+    });
+  });
+
   describe('state updates', () => {
     it('reflects new power value on updateState', () => {
       const platform = makePlatform();
