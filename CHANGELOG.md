@@ -13,6 +13,7 @@
 - **AC fan speed slider resets to 0% when off** — same root cause as the fan flash; `getAcFanSpeed()` now returns the stored device speed regardless of power state, keeping the HomeKit slider at the last-used position
 - **Concurrent write 400 errors** — when HomeKit fired multiple `onSet` handlers simultaneously (e.g. power + fan speed on tile tap), each handler dispatched a separate HTTP PUT which the Hubspace API rejected with 400; `setDeviceValues()` now coalesces all patches queued within the same event-loop tick into a single PUT
 - **Write failure log shows sent payload** — error log on a failed SET STATE now includes the exact patch that was sent (functionClass, functionInstance, value) alongside the full API response body, making 400 errors diagnosable without enabling verbose mode
+- **Portable AC fan speed wrong/unresponsive on some models** — `PortableAcAccessory` only recognized the literal values `fan-speed-auto`/`fan-speed-low`/`fan-speed-high`; models that instead report the numeric `fan-speed-N-VVV` format (e.g. a 4-position Auto/Low/Med/High panel reporting `fan-speed-3-100`) fell through to a hardcoded 33% default on read, and writes sent a value format the device didn't recognize at all; now reuses the same `hubspeedToPercent`/`percentToHubspeed` converters already used for ceiling fans, which handle both formats correctly
 
 ### Internal
 
