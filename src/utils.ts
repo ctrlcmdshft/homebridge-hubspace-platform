@@ -104,6 +104,10 @@ const SEMANTIC_SPEED_TO_PERCENT: Record<string, number> = {
   'fan-speed-050': 50,
   'fan-speed-075': 75,
   'fan-speed-100': 100,
+  // Portable AC 3-speed semantic values (matches percentToHubspeed's dedicated branch).
+  'fan-speed-auto': 33,
+  'fan-speed-low': 66,
+  'fan-speed-high': 99,
   // Legacy named-speed fallbacks for older device profiles.
   'low': 25,
   'medium-low': 40,
@@ -137,6 +141,15 @@ export function hubspeedToPercent(value: string): number {
 /** Convert a HomeKit rotation-speed percentage to the Afero semantic value name. */
 export function percentToHubspeed(percent: number, currentValue: string): string {
   const lower = currentValue.toLowerCase();
+
+  // Portable AC 3-speed semantic format (checked before the generic
+  // "starts with fan-speed-" numeric branch below, which would otherwise
+  // wrongly rewrite these into the fixed 4-step numeric format).
+  if (lower === 'fan-speed-auto' || lower === 'fan-speed-low' || lower === 'fan-speed-high') {
+    if (percent <= 33) return 'fan-speed-auto';
+    if (percent <= 66) return 'fan-speed-low';
+    return 'fan-speed-high';
+  }
 
   // N-speed numeric format: fan-speed-6-016, fan-speed-4-025, etc.
   // The device self-describes its speed count; we snap to the nearest valid step.
