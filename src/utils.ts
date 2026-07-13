@@ -90,6 +90,23 @@ export function kelvinToMired(k: number): number {
   return Math.min(500, Math.max(140, Math.round(1_000_000 / k)));
 }
 
+/** Parse Hubspace color-temperature values such as 4000, "4000", or "4000K". */
+export function parseKelvin(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*k?$/i);
+  if (!match) return null;
+  const kelvin = Number(match[1]);
+  return Number.isFinite(kelvin) ? kelvin : null;
+}
+
+/** Format a Kelvin write to match the device's current Hubspace value shape. */
+export function formatKelvinForHubspace(kelvin: number, currentValue: unknown): string | number {
+  if (typeof currentValue === 'number') return kelvin;
+  if (typeof currentValue === 'string' && /k\s*$/i.test(currentValue.trim())) return `${kelvin}K`;
+  return kelvin.toString();
+}
+
 /** HomeKit mireds → Kelvin. */
 export function miredToKelvin(m: number): number {
   return Math.round(1_000_000 / m);

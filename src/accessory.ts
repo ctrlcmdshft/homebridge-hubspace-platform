@@ -14,6 +14,8 @@ import {
   rgbToHsv,
   parseColorRgb,
   kelvinToMired,
+  parseKelvin,
+  formatKelvinForHubspace,
   miredToKelvin,
   hubspeedToPercent,
   percentToHubspeed,
@@ -322,9 +324,11 @@ export class LightAccessory extends BaseHubspaceAccessory {
   private getColorTemp(): CharacteristicValue {
     const v = this.findValue(FC.COLOR_TEMP);
     if (!v) return 370; // 2702 K default
+    const kelvin = parseKelvin(v.value);
+    if (kelvin === null) return 370;
     const minMired = kelvinToMired(6500); // 154
     const maxMired = kelvinToMired(2700); // 370
-    return Math.min(maxMired, Math.max(minMired, kelvinToMired(Number(v.value))));
+    return Math.min(maxMired, Math.max(minMired, kelvinToMired(kelvin)));
   }
 
   private getHue(): CharacteristicValue {
@@ -367,8 +371,9 @@ export class LightAccessory extends BaseHubspaceAccessory {
     if (this.colorTempTimer) clearTimeout(this.colorTempTimer);
     this.colorTempTimer = setTimeout(async () => {
       const k = miredToKelvin(mireds);
+      const current = this.findValue(FC.COLOR_TEMP);
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildPatch(FC.COLOR_TEMP, k.toString()),
+        this.buildPatch(FC.COLOR_TEMP, formatKelvinForHubspace(k, current?.value)),
       ];
       if (this.findValue(FC.COLOR_MODE)) {
         patches.push(this.buildPatch(FC.COLOR_MODE, 'white'));
