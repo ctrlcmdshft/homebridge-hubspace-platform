@@ -239,6 +239,18 @@ describe('hubspeedToPercent', () => {
     expect(hubspeedToPercent('fan-speed-6-100')).toBe(100);
     expect(hubspeedToPercent('FAN-SPEED-6-016')).toBe(16);
   });
+
+  it('converts a portable AC N-speed value (fan-speed-3-100)', () => {
+    // Regression: this exact value was previously falling through to the
+    // fan-speed-auto/low/high switch's default case and reading as 33%.
+    expect(hubspeedToPercent('fan-speed-3-100')).toBe(100);
+  });
+
+  it('converts portable AC 3-speed semantic values', () => {
+    expect(hubspeedToPercent('fan-speed-auto')).toBe(33);
+    expect(hubspeedToPercent('fan-speed-low')).toBe(66);
+    expect(hubspeedToPercent('fan-speed-high')).toBe(99);
+  });
 });
 
 // ─── Fan speed: percentToHubspeed ─────────────────────────────────────────────
@@ -316,6 +328,23 @@ describe('percentToHubspeed (N-speed numeric format)', () => {
     expect(percentToHubspeed(50,  'fan-speed-3-033')).toBe('fan-speed-3-066'); // |50-33|=17 vs |50-66|=16 → 66
     expect(percentToHubspeed(75,  'fan-speed-3-033')).toBe('fan-speed-3-066');
     expect(percentToHubspeed(100, 'fan-speed-3-033')).toBe('fan-speed-3-100');
+  });
+
+  it('does not rewrite a Boys-AC-style value into the fixed 4-step format', () => {
+    // Regression: this value starts with "fan-speed-" so it must be caught by
+    // the N-speed branch, not fall into the legacy fixed-step branch below it.
+    expect(percentToHubspeed(0, 'fan-speed-3-100')).toBe('fan-speed-3-000');
+  });
+});
+
+describe('percentToHubspeed (portable AC 3-speed semantic format)', () => {
+  it('round-trips fan-speed-auto/low/high without being rewritten into the numeric format', () => {
+    expect(percentToHubspeed(0,   'fan-speed-low')).toBe('fan-speed-auto');
+    expect(percentToHubspeed(33,  'fan-speed-low')).toBe('fan-speed-auto');
+    expect(percentToHubspeed(50,  'fan-speed-low')).toBe('fan-speed-low');
+    expect(percentToHubspeed(66,  'fan-speed-low')).toBe('fan-speed-low');
+    expect(percentToHubspeed(99,  'fan-speed-low')).toBe('fan-speed-high');
+    expect(percentToHubspeed(100, 'fan-speed-auto')).toBe('fan-speed-high');
   });
 });
 
