@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Release Notes
+
+This prerelease combines the login UI/excluded-device work from the `login` branch with the field-tested portable AC and color-temperature fixes from the `copenlc` tester branch.
+
+The portable AC changes were verified against logs from @copenlc's Vissani/Hubspace "Boys AC" unit, which reports fan speed as `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`. Thanks to @copenlc for repeated HomeKit slider tests, debug logs, and confirming the final write/readback behavior.
+
+The color-temperature change was driven by logs from a "Ceiling Light" device that reports Kelvin values with a `K` suffix, such as `4000K`. Thanks to the Ceiling Light reporter for the PUT/GET state logs that exposed both the HTTP 400 write failure and the Homebridge `NaN` warning. Replace this note with their GitHub handle before the final release if available.
+
 ### Features
 
 - **Portable AC support** — new `PortableAcAccessory` exposes Hubspace portable air conditioners as HomeKit **HeaterCooler** tiles; supports power on/off, cooling threshold temperature, current temperature (read-only), and fan speed (auto / low / high via RotationSpeed slider at 33 / 66 / 99%); overload and sensor faults surface as `StatusFault`; tested against Vissani VAP05R1AWT
@@ -21,6 +29,14 @@
 - **Plugin UI always showed "Checking…" for the full 5 seconds on open** — `/auth-status` was fetched via a one-time server push sent at UI-process construction, but homebridge-config-ui-x reuses the same long-lived UI process across page loads, so only the very first page load ever saw that push; every later visit waited out the full timeout for a push that would never arrive; `/auth-status` now uses plain request/response (dispatched fresh on every call, regardless of process age), which is what it should have used all along since it's a fast local read with no risk of hanging
 - **`excludedDevices` matching was case-sensitive** — inconsistent with the case-insensitive `friendlyName` matching already used for fan/light dedup in `hubspace-client.ts`; a case mismatch in a hand-typed exclusion list would silently exclude nothing; matching is now case-insensitive, and any exclusion entry that doesn't match a discovered device now logs a warning to help catch typos
 - **Portable AC fan speed wrong/unresponsive on some models** — `PortableAcAccessory` only recognized the literal values `fan-speed-auto`/`fan-speed-low`/`fan-speed-high`; models that instead report the numeric `fan-speed-N-VVV` format (e.g. a 4-position Auto/Low/Med/High panel reporting `fan-speed-3-100`) fell through to a hardcoded 33% default on read, and writes sent a value format the device didn't recognize at all; now reuses the same `hubspeedToPercent`/`percentToHubspeed` converters already used for ceiling fans, which handle both formats correctly
+- **Portable AC fan changes sent redundant power writes** — HomeKit sometimes echoed `Active=on` while changing only the AC fan speed, which caused a bundled or duplicate `power=on` write alongside `fan-speed[ac-fan-speed]`; `PortableAcAccessory` now ignores redundant Active writes when the AC is already on, so fan changes send only the fan-speed patch
+- **Portable AC fan slider could turn the AC off** — dragging the HomeKit fan slider to the bottom sent `power=off`, even though the HeaterCooler tile already has a separate main power control; the fan slider now has a 33% floor and snaps `RotationSpeed=0` back to the lowest fan speed (`fan-speed-auto` or `fan-speed-3-033`) instead of powering the AC off
+- **K-suffixed color temperatures produced `NaN` and HTTP 400 errors** — some Hubspace lights report color temperature as strings like `4000K`; the old parser used `Number(value)`, producing `NaN` for HomeKit, and writes sent bare Kelvin strings like `"4505"` that affected devices rejected; color temperature parsing now accepts numeric, numeric-string, and `K`-suffixed values, and writes preserve the device's current value shape (e.g. `4505K`)
+
+### Thanks
+
+- Thanks to @copenlc for the portable AC testing, especially the high/medium/low fan-speed PUT/GET logs for `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`.
+- Thanks to the Ceiling Light reporter for the color-temperature logs showing `color-temperature[undefined]=4000K` and the failed `"4505"` write. Add their GitHub handle here before release if available.
 
 ### Internal
 
