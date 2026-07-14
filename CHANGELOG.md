@@ -6,9 +6,9 @@
 
 This prerelease combines the login UI/excluded-device work from the `login` branch with the field-tested portable AC and color-temperature fixes from the `copenlc` tester branch.
 
-The portable AC changes were verified against logs from @copenlc's Vissani/Hubspace "Boys AC" unit, which reports fan speed as `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`. Thanks to @copenlc for repeated HomeKit slider tests, debug logs, and confirming the final write/readback behavior.
+The portable AC changes were verified against logs from @jvmo's Vissani/Hubspace "Boys AC" unit, which reports fan speed as `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`. Thanks to @jvmo for repeated HomeKit slider tests, debug logs, and confirming the final write/readback behavior.
 
-The color-temperature change was driven by logs from a "Ceiling Light" device that reports Kelvin values with a `K` suffix, such as `4000K`. Thanks to the Ceiling Light reporter for the PUT/GET state logs that exposed both the HTTP 400 write failure and the Homebridge `NaN` warning. Replace this note with their GitHub handle before the final release if available.
+The color-temperature change was driven by logs from @justinglock40's "Ceiling Light" device that reports Kelvin values with a `K` suffix, such as `4000K`. Thanks to @justinglock40 for the PUT/GET state logs that exposed both the HTTP 400 write failure and the Homebridge `NaN` warning.
 
 ### Features
 
@@ -35,8 +35,9 @@ The color-temperature change was driven by logs from a "Ceiling Light" device th
 
 ### Thanks
 
-- Thanks to @copenlc for the portable AC testing, especially the high/medium/low fan-speed PUT/GET logs for `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`.
-- Thanks to the Ceiling Light reporter for the color-temperature logs showing `color-temperature[undefined]=4000K` and the failed `"4505"` write. Add their GitHub handle here before release if available.
+- Thanks to @copenlc for the Hampton Bay landscape transformer capability dump and follow-up testing on issue #9.
+- Thanks to @jvmo for the portable AC testing on issue #10, especially the high/medium/low fan-speed PUT/GET logs for `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`.
+- Thanks to @justinglock40 for the color-temperature report on issue #11 showing `color-temperature[undefined]=4000K` and the failed `"4505"` write.
 
 ### Internal
 
