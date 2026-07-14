@@ -962,7 +962,7 @@ describe('PortableAcAccessory', () => {
       ]));
     });
 
-    it('fan speed 0 enqueues power=off', async () => {
+    it('fan speed 0 snaps to the lowest fan speed instead of powering off', async () => {
       const { platform, onSetFanSpeed } = setup();
       onSetFanSpeed(0);
       jest.runAllTimers();
@@ -970,7 +970,26 @@ describe('PortableAcAccessory', () => {
       expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
       const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
       expect(patches).toEqual([
-        expect.objectContaining({ functionClass: FC.POWER, value: 'off' }),
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-auto' }),
+      ]);
+    });
+
+    it('fan speed 0 snaps to fan-speed-3-033 for N-speed ACs', async () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': 'fan-speed-3-100' }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
+
+      onSetFanSpeed(0);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-3-033' }),
       ]);
     });
 
