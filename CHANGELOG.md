@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2.0.3-login.26] - 2026-07-14
+
 ### Release Notes
 
 This prerelease combines the login UI/excluded-device work from the `login` branch with the field-tested portable AC and color-temperature fixes from the `copenlc` tester branch.
