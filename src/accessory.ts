@@ -1063,7 +1063,7 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
 
     if (this.findValue(FC.FAN_SPEED)) {
       this.svc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-        .setProps({ minValue: 0, maxValue: 100, minStep: 33 })
+        .setProps({ minValue: 33, maxValue: 100, minStep: 33 })
         .onGet(() => {
           if (this.offline) throw this.noResponse;
           return this.getAcFanSpeed();
@@ -1161,11 +1161,7 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
   }
 
   private async setAcFanSpeed(percent: number): Promise<void> {
-    if (percent === 0) {
-      this.clearSuppressedTurnOnSpeed();
-      this.setDeviceValues([this.buildPatch(FC.POWER, 'off')]);
-      return;
-    }
+    const requestedPercent = percent <= 0 ? 33 : percent;
     if (this.suppressTurnOnSpeedPercent === percent) {
       this.clearSuppressedTurnOnSpeed();
       this.svc.updateCharacteristic(
@@ -1176,7 +1172,7 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
     }
     this.clearSuppressedTurnOnSpeed();
     const current = this.findValue(FC.FAN_SPEED);
-    const speed = percentToHubspeed(percent, String(current?.value ?? 'fan-speed-auto'));
+    const speed = percentToHubspeed(requestedPercent, String(current?.value ?? 'fan-speed-auto'));
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, speed)]);
   }
 
