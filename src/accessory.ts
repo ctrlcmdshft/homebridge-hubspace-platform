@@ -1111,11 +1111,7 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
 
   private getStoredAcFanSpeed(): number {
     const v = this.findValue(FC.FAN_SPEED);
-    switch (String(v?.value ?? '')) {
-      case 'fan-speed-low':  return 66;
-      case 'fan-speed-high': return 99;
-      default:               return 33; // fan-speed-auto or unknown
-    }
+    return v ? hubspeedToPercent(String(v.value)) : 33;
   }
 
   // ── Setters ───────────────────────────────────────────────────────────────────
@@ -1169,10 +1165,8 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
       return;
     }
     this.clearSuppressedTurnOnSpeed();
-    let speed: string;
-    if (percent <= 33) speed = 'fan-speed-auto';
-    else if (percent <= 66) speed = 'fan-speed-low';
-    else speed = 'fan-speed-high';
+    const current = this.findValue(FC.FAN_SPEED);
+    const speed = percentToHubspeed(percent, String(current?.value ?? 'fan-speed-auto'));
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, speed)]);
   }
 
