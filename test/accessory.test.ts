@@ -920,10 +920,18 @@ describe('PortableAcAccessory', () => {
       await Promise.resolve();
       expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
       const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
-      expect(patches).toEqual(expect.arrayContaining([
-        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+      expect(patches).toEqual([
         expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-high' }),
-      ]));
+      ]);
+    });
+
+    it('does not send a redundant power=on when already active', async () => {
+      const { platform, onSetActive } = setup();
+      onSetActive(Active.ACTIVE);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).not.toHaveBeenCalled();
     });
 
     it('last write wins when the same key is enqueued twice', async () => {

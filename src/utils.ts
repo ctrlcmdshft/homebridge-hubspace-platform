@@ -173,6 +173,12 @@ export function percentToHubspeed(percent: number, currentValue: string): string
   const nSpeed = parseNSpeedValue(lower);
   if (nSpeed) {
     const { numSpeeds } = nSpeed;
+    if (numSpeeds === 3) {
+      const steps = [33, 66, 100];
+      const v = steps.reduce((best, step) =>
+        Math.abs(step - percent) < Math.abs(best - percent) ? step : best);
+      return `fan-speed-3-${v.toString().padStart(3, '0')}`;
+    }
     let bestI = 0, bestDist = Infinity;
     for (let i = 0; i <= numSpeeds; i++) {
       const dist = Math.abs(Math.floor(i * 100 / numSpeeds) - percent);
