@@ -1123,7 +1123,12 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
 
   private async setActive(hkActive: number): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
-    const wasInactive = this.getActive() === this.platform.Characteristic.Active.INACTIVE;
+    const currentlyActive = this.getActive() === this.platform.Characteristic.Active.ACTIVE;
+    const wasInactive = !currentlyActive;
+    if (on === currentlyActive) {
+      this.clearSuppressedTurnOnSpeed();
+      return;
+    }
     if (on && wasInactive) {
       const storedSpeed = this.getStoredAcFanSpeed();
       if (storedSpeed > 0 && storedSpeed < 99) {

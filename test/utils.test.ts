@@ -338,7 +338,8 @@ describe('percentToHubspeed (N-speed numeric format)', () => {
   });
 
   it('uses N from the current value regardless of speed count', () => {
-    // 3-speed: valid steps are 0, 33, 66, 100 (floor(i*100/3))
+    // AC-style 3-speed values use operating speeds only; power handles off.
+    expect(percentToHubspeed(0,   'fan-speed-3-033')).toBe('fan-speed-3-033');
     expect(percentToHubspeed(33,  'fan-speed-3-033')).toBe('fan-speed-3-033');
     expect(percentToHubspeed(50,  'fan-speed-3-033')).toBe('fan-speed-3-066'); // |50-33|=17 vs |50-66|=16 → 66
     expect(percentToHubspeed(75,  'fan-speed-3-033')).toBe('fan-speed-3-066');
@@ -348,7 +349,7 @@ describe('percentToHubspeed (N-speed numeric format)', () => {
   it('does not rewrite a Boys-AC-style value into the fixed 4-step format', () => {
     // Regression: this value starts with "fan-speed-" so it must be caught by
     // the N-speed branch, not fall into the legacy fixed-step branch below it.
-    expect(percentToHubspeed(0, 'fan-speed-3-100')).toBe('fan-speed-3-000');
+    expect(percentToHubspeed(0, 'fan-speed-3-100')).toBe('fan-speed-3-033');
   });
 });
 
