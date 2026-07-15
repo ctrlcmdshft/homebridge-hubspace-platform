@@ -27,6 +27,8 @@ export abstract class BaseHubspaceAccessory {
   protected readonly log: Logger;
   /** Map key: `functionClass:functionInstance` → latest value object. */
   protected stateMap: Map<string, DeviceStateValue> = new Map();
+  /** Learned category values for color-temperature devices that reject arbitrary Kelvin writes. */
+  private readonly colorTempCategories = new Map<string, number[]>();
   protected offline = false;
   private pollFails = 0;
   private static readonly OFFLINE_THRESHOLD = 3;
@@ -197,6 +199,10 @@ export abstract class BaseHubspaceAccessory {
       await this.platform.client.setDeviceState(this.device.id, patches);
       this.platform.scheduleQuickPoll(this.device.id, 3000);
     } catch (err) {
+      if (await this.retryWithAllowedColorTemperature(err, patches)) {
+        this.platform.scheduleQuickPoll(this.device.id, 3000);
+        return;
+      }
       const detail = isAxiosError(err)
         ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? JSON.stringify(err.response?.data) ?? err.message}` +
           (err.response?.data?.requestId ? ` (requestId: ${err.response.data.requestId})` : '')
@@ -238,6 +244,78 @@ export abstract class BaseHubspaceAccessory {
       functionInstance: existing !== undefined ? existing.functionInstance : (functionInstance ?? 'primary'),
       value,
     };
+  }
+
+  protected colorTempPatchValue(kelvin: number, current: DeviceStateValue | undefined): string | number {
+    const allowed = this.colorTempCategories.get(this.stateKey(FC.COLOR_TEMP, current?.functionInstance));
+    const snapped = allowed ? this.nearestKelvin(kelvin, allowed) : kelvin;
+    return formatKelvinForHubspace(snapped, current?.value);
+  }
+
+  private async retryWithAllowedColorTemperature(
+    err: unknown,
+    patches: Partial<DeviceStateValue>[],
+  ): Promise<boolean> {
+    if (!isAxiosError(err) || err.response?.status !== 400) return false;
+
+    const allowed = this.parseAllowedKelvinValues(err.response?.data?.error);
+    if (allowed.length === 0) return false;
+
+    let changed = false;
+    const retryPatches = patches.map((patch) => {
+      if (patch.functionClass !== FC.COLOR_TEMP) return patch;
+
+      const requestedKelvin = parseKelvin(patch.value);
+      if (requestedKelvin === null) return patch;
+
+      const snapped = this.nearestKelvin(requestedKelvin, allowed);
+      const retryPatch = {
+        ...patch,
+        value: formatKelvinForHubspace(snapped, patch.value),
+      };
+      this.colorTempCategories.set(this.stateKey(FC.COLOR_TEMP, patch.functionInstance), allowed);
+      changed = changed || retryPatch.value !== patch.value;
+      return retryPatch;
+    });
+
+    if (!changed) return false;
+
+    await this.platform.client.setDeviceState(this.device.id, retryPatches);
+    this.applyOptimisticUpdate(retryPatches);
+    if (this.platform.debug) {
+      this.log.info(
+        `Retried color-temperature for "${this.device.friendlyName}" with nearest supported value: ` +
+        retryPatches
+          .filter(p => p.functionClass === FC.COLOR_TEMP)
+          .map(p => `${p.functionClass}[${p.functionInstance}]=${JSON.stringify(p.value)}`)
+          .join(', '),
+      );
+    }
+    return true;
+  }
+
+  private parseAllowedKelvinValues(error: unknown): number[] {
+    if (typeof error !== 'string' || !error.includes('color-temperature')) return [];
+
+    const values = new Set<number>();
+    const re = /\bname=([0-9]+(?:\.[0-9]+)?)\s*K\b/gi;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(error)) !== null) {
+      const kelvin = Number(match[1]);
+      if (Number.isFinite(kelvin)) values.add(kelvin);
+    }
+
+    return [...values].sort((a, b) => a - b);
+  }
+
+  private nearestKelvin(kelvin: number, allowed: number[]): number {
+    return allowed.reduce((nearest, candidate) =>
+      Math.abs(candidate - kelvin) < Math.abs(nearest - kelvin) ? candidate : nearest,
+    allowed[0]);
+  }
+
+  private stateKey(functionClass: string, functionInstance: string | undefined): string {
+    return `${functionClass}:${functionInstance}`;
   }
 }
 
@@ -373,7 +451,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
       const k = miredToKelvin(mireds);
       const current = this.findValue(FC.COLOR_TEMP);
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildPatch(FC.COLOR_TEMP, formatKelvinForHubspace(k, current?.value)),
+        this.buildPatch(FC.COLOR_TEMP, this.colorTempPatchValue(k, current)),
       ];
       if (this.findValue(FC.COLOR_MODE)) {
         patches.push(this.buildPatch(FC.COLOR_MODE, 'white'));

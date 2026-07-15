@@ -580,6 +580,46 @@ describe('LightAccessory', () => {
         expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '4505K' }),
       ]);
     });
+
+    it('retries rejected K-suffixed color-temperature writes with the nearest semantic category', async () => {
+      jest.useFakeTimers();
+      const semanticError =
+        'Semantic value definitions not found. Function: SemanticFunctionDto(functionClass=color-temperature, ' +
+        'values=[SemanticValueDefinitionDto(name=6500K), SemanticValueDefinitionDto(name=5000K), ' +
+        'SemanticValueDefinitionDto(name=4000K), SemanticValueDefinitionDto(name=3500K), ' +
+        'SemanticValueDefinitionDto(name=3000K), SemanticValueDefinitionDto(name=2700K)]), ' +
+        'state value: SemanticValueUpdateDto(functionClass=color-temperature, value=5814K)';
+      const platform = makePlatform();
+      platform.client.setDeviceState = jest.fn()
+        .mockRejectedValueOnce({ isAxiosError: true, response: { status: 400, data: { error: semanticError } } })
+        .mockResolvedValueOnce(undefined);
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.COLOR_TEMP, '4000K')]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const onSetColorTemperature: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetColorTemperature(172);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(2);
+      expect(platform.client.setDeviceState).toHaveBeenNthCalledWith(
+        1,
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '5814K' })],
+      );
+      expect(platform.client.setDeviceState).toHaveBeenNthCalledWith(
+        2,
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '6500K' })],
+      );
+      expect(platform.log.error).not.toHaveBeenCalled();
+    });
   });
 
   describe('state updates', () => {
