@@ -1173,6 +1173,13 @@ export class PortableAcAccessory extends BaseHubspaceAccessory {
     this.clearSuppressedTurnOnSpeed();
     const current = this.findValue(FC.FAN_SPEED);
     const speed = percentToHubspeed(requestedPercent, String(current?.value ?? 'fan-speed-auto'));
+    if (current?.value === speed) {
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getAcFanSpeed(),
+      );
+      return;
+    }
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, speed)]);
   }
 

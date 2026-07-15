@@ -947,12 +947,53 @@ describe('PortableAcAccessory', () => {
       expect(fanPatch).toEqual(expect.objectContaining({ value: 'fan-speed-high' }));
     });
 
+    it('ignores repeated fan speed writes that match the current device value', async () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': 'fan-speed-3-066' }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
+
+      onSetFanSpeed(66);
+      onSetFanSpeed(66);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).not.toHaveBeenCalled();
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 66);
+    });
+
+    it('still writes fan speed when the requested value differs from current device value', async () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': 'fan-speed-3-066' }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
+
+      onSetFanSpeed(100);
+      jest.runAllTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.FAN_SPEED, value: 'fan-speed-3-100' }),
+      ]);
+    });
+
     it.each([
-      [33, 'fan-speed-auto'],
-      [66, 'fan-speed-low'],
-      [99, 'fan-speed-high'],
-    ])('fan %i%% → %s in the flushed batch', async (pct, expected) => {
-      const { platform, onSetFanSpeed } = setup();
+      [33, 'fan-speed-auto', 'fan-speed-high'],
+      [66, 'fan-speed-low', 'fan-speed-high'],
+      [99, 'fan-speed-high', 'fan-speed-auto'],
+    ])('fan %i%% → %s in the flushed batch', async (pct, expected, currentSpeed) => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': currentSpeed }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
       onSetFanSpeed(pct);
       jest.runAllTimers();
       await Promise.resolve();
@@ -963,7 +1004,12 @@ describe('PortableAcAccessory', () => {
     });
 
     it('fan speed 0 snaps to the lowest fan speed instead of powering off', async () => {
-      const { platform, onSetFanSpeed } = setup();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeAcDevice(makeAcValues({ power: 'on', 'fan-speed': 'fan-speed-high' }));
+      new PortableAcAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[3][0];
       onSetFanSpeed(0);
       jest.runAllTimers();
       await Promise.resolve();
