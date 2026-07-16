@@ -1,4 +1,5 @@
 import type { Logger } from 'homebridge';
+import type { DeviceStateValue } from './types';
 
 /** Wraps a Homebridge Logger and prepends [prefix] to info/warn/error messages. */
 export function createLogger(base: Logger, prefix: string): Logger {
@@ -8,6 +9,24 @@ export function createLogger(base: Logger, prefix: string): Logger {
   wrapped.warn  = (msg: string, ...a: unknown[]) => base.warn(`${tag} ${msg}`, ...a);
   wrapped.error = (msg: string, ...a: unknown[]) => base.error(`${tag} ${msg}`, ...a);
   return wrapped;
+}
+
+const PRIVATE_STATE_FIELDS = new Set([
+  'geo-coordinates',
+  'wifi-ssid',
+  'wifi-mac-address',
+  'ble-mac-address',
+]);
+
+export function formatStateValueForLog(v: DeviceStateValue): string {
+  const instance = v.functionInstance ?? 'undefined';
+  const isPrivate = PRIVATE_STATE_FIELDS.has(v.functionClass);
+  const value = isPrivate
+    ? '<redacted>'
+    : typeof v.value === 'object'
+      ? JSON.stringify(v.value)
+      : String(v.value);
+  return `${v.functionClass}[${instance}]=${value}`;
 }
 
 /** HSV → RGB. h: 0–360, s: 0–100, v: 0–100. Returns [r, g, b] each 0–255. */
