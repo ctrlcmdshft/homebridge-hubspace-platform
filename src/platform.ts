@@ -9,7 +9,7 @@ import {
 } from 'homebridge';
 import { PLUGIN_NAME, PLATFORM_NAME, HubspaceConfig, SUPPORTED_DEVICE_CLASSES } from './types';
 import { HubspaceClient } from './hubspace-client';
-import { createLogger } from './utils';
+import { createLogger, formatStateValueForLog } from './utils';
 import { BaseHubspaceAccessory, FanAccessory, createAccessory } from './accessory';
 import type { HubspaceAccessoryContext } from './accessory';
 
@@ -31,6 +31,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailCycles = 0;
+  private readonly pollFailureCounts = new Map<string, number>();
   private conclaveActive = false;
   private readonly pendingQuickPolls = new Set<string>();
   /** Cache: Conclave BLE-MAC-based device ID → metadevice UUID. */
@@ -159,13 +160,9 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
           `  To request support: https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues`,
         );
         if (this.debug) {
-          const PRIVATE_FIELDS = new Set([
-            'geo-coordinates', 'wifi-ssid', 'wifi-mac-address', 'ble-mac-address',
-          ]);
           for (const v of device.values) {
-            if (PRIVATE_FIELDS.has(v.functionClass)) continue;
             this.log.info(
-              `  [debug] ${v.functionClass}[${v.functionInstance ?? 'undefined'}] = ${JSON.stringify(v.value)}`,
+              `  [debug] ${formatStateValueForLog(v)}`,
             );
           }
         }
@@ -289,7 +286,9 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       const allIds = handler.device.allIds ?? [metadeviceId];
       this.client.getDeviceState(allIds)
         .then(values => handler.updateState(values))
-        .catch(err => this.log.warn(`Quick-poll failed for ${metadeviceId}: ${err}`));
+        .catch(err => this.log.warn(
+          `Quick-poll failed for ${this.deviceLabel(metadeviceId, handler)}: ${this.formatPollError(err)}`,
+        ));
     }, delayMs);
   }
 
@@ -349,14 +348,13 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
 
     let failCount = 0;
     results.forEach((r, i) => {
-      const [, handler] = entries[i];
+      const [deviceId, handler] = entries[i];
       if (r.status === 'rejected') {
         failCount++;
         handler.markPollFailed();
-        if (this.consecutiveFailCycles < 3) {
-          const [deviceId] = entries[i];
-          this.pollLog.warn(`Failed for ${deviceId}: ${r.reason}`);
-        }
+        this.logPollFailure(deviceId, handler, r.reason);
+      } else {
+        this.logPollRecovery(deviceId, handler);
       }
     });
     if (failCount > 0) {
@@ -372,6 +370,40 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
       }
       this.consecutiveFailCycles = 0;
     }
+  }
+
+  private logPollFailure(deviceId: string, handler: BaseHubspaceAccessory, reason: unknown): void {
+    const failureCount = (this.pollFailureCounts.get(deviceId) ?? 0) + 1;
+    this.pollFailureCounts.set(deviceId, failureCount);
+
+    if (this.consecutiveFailCycles >= 3 || failureCount > 3) return;
+
+    const label = this.deviceLabel(deviceId, handler);
+    const error = this.formatPollError(reason);
+    if (failureCount === 3) {
+      this.pollLog.warn(`Failed for ${label}: ${error} — suppressing repeated errors until it recovers.`);
+    } else {
+      this.pollLog.warn(`Failed for ${label}: ${error}`);
+    }
+  }
+
+  private logPollRecovery(deviceId: string, handler: BaseHubspaceAccessory): void {
+    const failureCount = this.pollFailureCounts.get(deviceId) ?? 0;
+    if (failureCount >= 3) {
+      this.pollLog.info(`${this.deviceLabel(deviceId, handler)} poll recovered after ${failureCount} failed attempt(s).`);
+    }
+    this.pollFailureCounts.delete(deviceId);
+  }
+
+  private deviceLabel(deviceId: string, handler: BaseHubspaceAccessory): string {
+    return `"${handler.device.friendlyName}" (${deviceId})`;
+  }
+
+  private formatPollError(reason: unknown): string {
+    if (reason instanceof Error) {
+      return reason.message;
+    }
+    return String(reason);
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────

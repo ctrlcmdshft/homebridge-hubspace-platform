@@ -30,12 +30,12 @@ const StatusFault = { NO_FAULT: 0, GENERAL_FAULT: 1 };
 const CurrentHeaterCoolerState = { INACTIVE: 0, IDLE: 1, HEATING: 2, COOLING: 3 };
 const TargetHeaterCoolerState = { AUTO: 0, HEAT: 1, COOL: 2 };
 
-function makePlatform(opts: { exposeStatusFault?: boolean } = {}) {
+function makePlatform(opts: { exposeStatusFault?: boolean; verbose?: boolean } = {}) {
   const svc = makeSvcMock();
   return {
     log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
     debug: false,
-    verbose: false,
+    verbose: opts.verbose ?? false,
     exposeStatusFault: opts.exposeStatusFault ?? false,
     invertOutletStatus: false,
     api: {
@@ -196,6 +196,78 @@ describe('FanAccessory', () => {
       fanAcc.updateState([sv(FC.POWER, 'on', 'fan-power'), sv(FC.FAN_SPEED, 'fan-speed-100', 'fan-speed')]);
 
       expect(platform._svc.updateCharacteristic).toHaveBeenLastCalledWith('RotationSpeed', 100);
+    });
+
+  });
+
+  describe('light kit color temperature', () => {
+    it('pushes K-suffixed color temperature values to the fan light service', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.POWER, 'on', 'light-power'),
+        sv(FC.COLOR_TEMP, '4000K'),
+      ]);
+      const fanAcc = new FanAccessory(platform as any, acc as any, device as any);
+
+      fanAcc.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('ColorTemperature', 250);
+    });
+
+    it('writes color temperature changes for fan light kits', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.POWER, 'on', 'light-power'),
+        sv(FC.COLOR_TEMP, '4000K'),
+      ]);
+      new FanAccessory(platform as any, acc as any, device as any);
+      const onSetColorTemperature: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls.at(-1)[0];
+
+      onSetColorTemperature(222);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '4505K' }),
+      ]);
+    });
+
+    it('turns the light kit on when changing color temperature while off', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.POWER, 'off', 'light-power'),
+        sv(FC.COLOR_TEMP, '4000K'),
+      ]);
+      new FanAccessory(platform as any, acc as any, device as any);
+      const onSetColorTemperature: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls.at(-1)[0];
+
+      onSetColorTemperature(222);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '4505K' }),
+        expect.objectContaining({ functionClass: FC.POWER, functionInstance: 'light-power', value: 'on' }),
+      ]);
     });
   });
 
@@ -632,6 +704,41 @@ describe('LightAccessory', () => {
       lightAcc.updateState([sv(FC.POWER, 'on')]);
 
       expect(platform._svc.updateCharacteristic).toHaveBeenLastCalledWith('On', true);
+    });
+
+    it('redacts private fields while preserving Wi-Fi health in verbose state logs', () => {
+      const platform = makePlatform({ verbose: true });
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.POWER, 'off')]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+
+      lightAcc.updateState([
+        sv(FC.POWER, 'on', 'light-power'),
+        sv('geo-coordinates', { 'geo-coordinates': { latitude: '39.1', longitude: '-77.2' } }, 'system-device-location'),
+        sv('wifi-ssid', 'My Network'),
+        sv('wifi-mac-address', '112233445566'),
+        sv('wifi-rssi', -64),
+        sv('wifi-steady-state', 'connected'),
+        sv('wifi-setup-state', 'connected'),
+        sv('ble-mac-address', 'aabbccddeeff'),
+      ]);
+
+      const logLine = (platform.log.info as jest.Mock).mock.calls
+        .map(([message]) => String(message))
+        .find(message => message.includes('State for "Ceiling Light"'));
+
+      expect(logLine).toContain('geo-coordinates[system-device-location]=<redacted>');
+      expect(logLine).toContain('wifi-ssid[undefined]=<redacted>');
+      expect(logLine).toContain('wifi-mac-address[undefined]=<redacted>');
+      expect(logLine).toContain('wifi-rssi[undefined]=-64');
+      expect(logLine).toContain('wifi-steady-state[undefined]=connected');
+      expect(logLine).toContain('wifi-setup-state[undefined]=connected');
+      expect(logLine).toContain('ble-mac-address[undefined]=<redacted>');
+      expect(logLine).toContain('power[light-power]=on');
+      expect(logLine).not.toContain('39.1');
+      expect(logLine).not.toContain('My Network');
+      expect(logLine).not.toContain('112233445566');
+      expect(logLine).not.toContain('aabbccddeeff');
     });
   });
 

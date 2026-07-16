@@ -7,6 +7,7 @@ import {
   miredToKelvin,
   parseKelvin,
   formatKelvinForHubspace,
+  formatStateValueForLog,
   hubspeedToPercent,
   percentToHubspeed,
 } from '../src/utils';
@@ -147,6 +148,57 @@ describe('hex ↔ RGB round-trip', () => {
   it.each(hexes)('%s round-trips', (hex) => {
     const [r, g, b] = hexToRgb(hex);
     expect(rgbToHex(r, g, b)).toBe(hex);
+  });
+});
+
+describe('formatStateValueForLog', () => {
+  it('redacts location, BLE MAC, and Wi-Fi identifiers', () => {
+    expect(formatStateValueForLog({
+      functionClass: 'geo-coordinates',
+      functionInstance: 'system-device-location',
+      value: { 'geo-coordinates': { latitude: '39.1', longitude: '-77.2' } },
+    })).toBe('geo-coordinates[system-device-location]=<redacted>');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-ssid',
+      functionInstance: undefined,
+      value: 'My Network',
+    })).toBe('wifi-ssid[undefined]=<redacted>');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-mac-address',
+      functionInstance: undefined,
+      value: 'aabbccddeeff',
+    })).toBe('wifi-mac-address[undefined]=<redacted>');
+    expect(formatStateValueForLog({
+      functionClass: 'ble-mac-address',
+      functionInstance: undefined,
+      value: 'aabbccddeeff',
+    })).toBe('ble-mac-address[undefined]=<redacted>');
+  });
+
+  it('keeps non-private state values visible', () => {
+    expect(formatStateValueForLog({
+      functionClass: 'power',
+      functionInstance: 'light-power',
+      value: 'on',
+    })).toBe('power[light-power]=on');
+  });
+
+  it('keeps Wi-Fi health fields visible for diagnostics', () => {
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-rssi',
+      functionInstance: undefined,
+      value: -64,
+    })).toBe('wifi-rssi[undefined]=-64');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-steady-state',
+      functionInstance: undefined,
+      value: 'connected',
+    })).toBe('wifi-steady-state[undefined]=connected');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-setup-state',
+      functionInstance: undefined,
+      value: 'connected',
+    })).toBe('wifi-setup-state[undefined]=connected');
   });
 });
 

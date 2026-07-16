@@ -19,6 +19,7 @@ import {
   miredToKelvin,
   hubspeedToPercent,
   percentToHubspeed,
+  formatStateValueForLog,
 } from './utils';
 
 // ─── Base accessory ───────────────────────────────────────────────────────────
@@ -115,7 +116,7 @@ export abstract class BaseHubspaceAccessory {
     if (this.platform.verbose) {
       this.log.info(
         `State for "${this.device.friendlyName}": ` +
-        values.map(v => `${v.functionClass}[${v.functionInstance}]=${typeof v.value === 'object' ? JSON.stringify(v.value) : v.value}`).join(', '),
+        values.map(formatStateValueForLog).join(', '),
       );
     }
     if (wasOffline && !this.offline) {
@@ -585,6 +586,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     // ── Optional light kit service ────────────────────────────────────────────
     const lightPower = this.findValue(FC.POWER, 'light-power');
     const hasBrightness = this.findValue(FC.BRIGHTNESS) !== undefined;
+    const hasColorTemp = this.findValue(FC.COLOR_TEMP) !== undefined;
     if (lightPower) {
       this.lightSvc =
         this.accessory.getService(this.platform.Service.Lightbulb) ??
@@ -607,6 +609,17 @@ export class FanAccessory extends BaseHubspaceAccessory {
             return this.getLightBrightness();
           })
           .onSet((v) => { void this.setLightBrightness(v as number); });
+      }
+
+      if (hasColorTemp) {
+        const minK = 2700, maxK = 6500;
+        this.lightSvc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
+          .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getLightColorTemp();
+          })
+          .onSet((v) => { void this.setLightColorTemp(v as number); });
       }
     }
 
@@ -913,6 +926,33 @@ export class FanAccessory extends BaseHubspaceAccessory {
     }, 300);
   }
 
+  private getLightColorTemp(): CharacteristicValue {
+    const v = this.findValue(FC.COLOR_TEMP);
+    if (!v) return 370;
+    const kelvin = parseKelvin(v.value);
+    if (kelvin === null) return 370;
+    const minMired = kelvinToMired(6500);
+    const maxMired = kelvinToMired(2700);
+    return Math.min(maxMired, Math.max(minMired, kelvinToMired(kelvin)));
+  }
+
+  private lightColorTempTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private async setLightColorTemp(mireds: number): Promise<void> {
+    if (this.lightColorTempTimer) clearTimeout(this.lightColorTempTimer);
+    this.lightColorTempTimer = setTimeout(async () => {
+      const k = miredToKelvin(mireds);
+      const current = this.findValue(FC.COLOR_TEMP);
+      const patches: Partial<DeviceStateValue>[] = [
+        this.buildPatch(FC.COLOR_TEMP, this.colorTempPatchValue(k, current), current?.functionInstance),
+      ];
+      if (!this.getLightPower()) {
+        patches.push(this.buildPatch(FC.POWER, 'on', 'light-power'));
+      }
+      this.setDeviceValues(patches);
+    }, 300);
+  }
+
   // ── Push ──────────────────────────────────────────────────────────────────────
 
   protected pushCharacteristics(): void {
@@ -944,6 +984,10 @@ export class FanAccessory extends BaseHubspaceAccessory {
       if (this.findValue(FC.BRIGHTNESS)) {
         this.lightSvc.updateCharacteristic(
           this.platform.Characteristic.Brightness, this.getLightBrightness());
+      }
+      if (this.findValue(FC.COLOR_TEMP)) {
+        this.lightSvc.updateCharacteristic(
+          this.platform.Characteristic.ColorTemperature, this.getLightColorTemp());
       }
     }
 
