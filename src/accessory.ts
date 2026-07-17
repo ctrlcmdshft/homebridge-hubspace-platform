@@ -22,6 +22,11 @@ import {
   formatStateValueForLog,
 } from './utils';
 
+type ColorTempCategory = {
+  kelvin: number;
+  value: string | number;
+};
+
 // ─── Base accessory ───────────────────────────────────────────────────────────
 
 export abstract class BaseHubspaceAccessory {
@@ -29,7 +34,7 @@ export abstract class BaseHubspaceAccessory {
   /** Map key: `functionClass:functionInstance` → latest value object. */
   protected stateMap: Map<string, DeviceStateValue> = new Map();
   /** Learned category values for color-temperature devices that reject arbitrary Kelvin writes. */
-  private readonly colorTempCategories = new Map<string, number[]>();
+  private readonly colorTempCategories = new Map<string, ColorTempCategory[]>();
   protected offline = false;
   private pollFails = 0;
   private static readonly OFFLINE_THRESHOLD = 3;
@@ -48,6 +53,7 @@ export abstract class BaseHubspaceAccessory {
   ) {
     this.log = createLogger(platform.log, 'Device');
     this.rebuildStateMap(device.values);
+    this.loadColorTempCategories(device.colorTempCategories);
     this.setupAccessoryInfo();
     this.setupServices();
   }
@@ -249,8 +255,10 @@ export abstract class BaseHubspaceAccessory {
 
   protected colorTempPatchValue(kelvin: number, current: DeviceStateValue | undefined): string | number {
     const allowed = this.colorTempCategories.get(this.stateKey(FC.COLOR_TEMP, current?.functionInstance));
-    const snapped = allowed ? this.nearestKelvin(kelvin, allowed) : kelvin;
-    return formatKelvinForHubspace(snapped, current?.value);
+    if (allowed) {
+      return this.nearestColorTempCategory(kelvin, allowed).value;
+    }
+    return formatKelvinForHubspace(kelvin, current?.value);
   }
 
   private async retryWithAllowedColorTemperature(
@@ -269,10 +277,10 @@ export abstract class BaseHubspaceAccessory {
       const requestedKelvin = parseKelvin(patch.value);
       if (requestedKelvin === null) return patch;
 
-      const snapped = this.nearestKelvin(requestedKelvin, allowed);
+      const snapped = this.nearestColorTempCategory(requestedKelvin, allowed);
       const retryPatch = {
         ...patch,
-        value: formatKelvinForHubspace(snapped, patch.value),
+        value: snapped.value,
       };
       this.colorTempCategories.set(this.stateKey(FC.COLOR_TEMP, patch.functionInstance), allowed);
       changed = changed || retryPatch.value !== patch.value;
@@ -295,24 +303,37 @@ export abstract class BaseHubspaceAccessory {
     return true;
   }
 
-  private parseAllowedKelvinValues(error: unknown): number[] {
+  private parseAllowedKelvinValues(error: unknown): ColorTempCategory[] {
     if (typeof error !== 'string' || !error.includes('color-temperature')) return [];
 
-    const values = new Set<number>();
+    const values = new Map<number, string>();
     const re = /\bname=([0-9]+(?:\.[0-9]+)?)\s*K\b/gi;
     let match: RegExpExecArray | null;
     while ((match = re.exec(error)) !== null) {
       const kelvin = Number(match[1]);
-      if (Number.isFinite(kelvin)) values.add(kelvin);
+      if (Number.isFinite(kelvin)) values.set(kelvin, `${match[1]}K`);
     }
 
-    return [...values].sort((a, b) => a - b);
+    return [...values.entries()]
+      .map(([kelvin, value]) => ({ kelvin, value }))
+      .sort((a, b) => a.kelvin - b.kelvin);
   }
 
-  private nearestKelvin(kelvin: number, allowed: number[]): number {
+  private nearestColorTempCategory(kelvin: number, allowed: ColorTempCategory[]): ColorTempCategory {
     return allowed.reduce((nearest, candidate) =>
-      Math.abs(candidate - kelvin) < Math.abs(nearest - kelvin) ? candidate : nearest,
+      Math.abs(candidate.kelvin - kelvin) < Math.abs(nearest.kelvin - kelvin) ? candidate : nearest,
     allowed[0]);
+  }
+
+  private loadColorTempCategories(categories: Record<string, Array<string | number>> | undefined): void {
+    for (const [instance, values] of Object.entries(categories ?? {})) {
+      const parsed = values
+        .map(value => ({ kelvin: parseKelvin(value), value }))
+        .filter((item): item is ColorTempCategory => item.kelvin !== null);
+      if (parsed.length > 0) {
+        this.colorTempCategories.set(this.stateKey(FC.COLOR_TEMP, instance === 'undefined' ? undefined : instance), parsed);
+      }
+    }
   }
 
   private stateKey(functionClass: string, functionInstance: string | undefined): string {

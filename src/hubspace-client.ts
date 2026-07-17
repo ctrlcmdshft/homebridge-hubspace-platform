@@ -6,13 +6,14 @@ import * as zlib from 'zlib';
 import * as crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { Logger } from 'homebridge';
-import { createLogger } from './utils';
+import { createLogger, parseKelvin } from './utils';
 import {
   AuthTokens,
   KeycloakTokenResponse,
   HubspaceDevice,
   HubspaceMetadeviceRaw,
   DeviceStateValue,
+  FC,
 } from './types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -216,6 +217,7 @@ export class HubspaceClient {
         manufacturerName: raw.description?.device?.manufacturerName,
         model: raw.description?.device?.model,
         values: raw.state?.values ?? [],
+        colorTempCategories: this.extractColorTempCategories(raw),
       });
     }
 
@@ -244,6 +246,10 @@ export class HubspaceClient {
               ),
             ),
           ],
+          colorTempCategories: {
+            ...(secondary.colorTempCategories ?? {}),
+            ...(primary.colorTempCategories ?? {}),
+          },
         };
         deduped.set(key, merged);
       }
@@ -252,6 +258,23 @@ export class HubspaceClient {
 
     this.log.info(`${result.length} controllable device(s) after filtering.`);
     return result;
+  }
+
+  private extractColorTempCategories(raw: HubspaceMetadeviceRaw): Record<string, Array<string | number>> | undefined {
+    const categories: Record<string, Array<string | number>> = {};
+
+    for (const fn of raw.description?.functions ?? []) {
+      if (fn.functionClass !== FC.COLOR_TEMP || fn.type !== 'category') continue;
+
+      const values = (fn.values ?? [])
+        .map(value => value.name)
+        .filter((value): value is string => value !== undefined && parseKelvin(value) !== null);
+      if (values.length === 0) continue;
+
+      categories[fn.functionInstance ?? 'undefined'] = values;
+    }
+
+    return Object.keys(categories).length > 0 ? categories : undefined;
   }
 
   /** Fetches and merges state for one or more device IDs. */

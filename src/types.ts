@@ -61,6 +61,22 @@ export interface DeviceStateValue {
   lastUpdateTime?: number;
 }
 
+export interface SemanticValueDefinition {
+  name?: string;
+  range?: {
+    min?: number | null;
+    max?: number | null;
+    step?: number | null;
+  };
+}
+
+export interface SemanticFunctionDefinition {
+  functionClass?: string;
+  functionInstance?: string;
+  type?: string;
+  values?: SemanticValueDefinition[];
+}
+
 /** Raw shape returned by semantics2 metadevices API. */
 export interface HubspaceMetadeviceRaw {
   id: string;
@@ -76,6 +92,7 @@ export interface HubspaceMetadeviceRaw {
       model?: string;
       defaultName?: string;
     };
+    functions?: SemanticFunctionDefinition[];
   };
   state?: {
     metadeviceId: string;
@@ -96,6 +113,8 @@ export interface HubspaceDevice {
   model?: string;
   /** Current state values for this device. */
   values: DeviceStateValue[];
+  /** Discrete color-temperature category names advertised by semantics2, keyed by functionInstance. */
+  colorTempCategories?: Record<string, Array<string | number>>;
 }
 
 // ─── Accessory context (persisted in PlatformAccessory.context) ───────────────
