@@ -94,19 +94,25 @@ function sv(
   return { functionClass, functionInstance, value } as DeviceStateValue;
 }
 
-function makeFanDevice(values: DeviceStateValue[]) {
+function makeFanDevice(
+  values: DeviceStateValue[],
+  colorTempCategories?: Record<string, Array<string | number>>,
+) {
   return {
     id: 'fan-1', allIds: ['fan-1'], typeId: 'metadevice.device',
     friendlyName: 'Ceiling Fan', deviceClass: 'ceiling-fan',
-    manufacturerName: 'Hampton Bay', model: 'test-model', values,
+    manufacturerName: 'Hampton Bay', model: 'test-model', values, colorTempCategories,
   };
 }
 
-function makeLightDevice(values: DeviceStateValue[]) {
+function makeLightDevice(
+  values: DeviceStateValue[],
+  colorTempCategories?: Record<string, Array<string | number>>,
+) {
   return {
     id: 'light-1', allIds: ['light-1'], typeId: 'metadevice.device',
     friendlyName: 'Ceiling Light', deviceClass: 'light',
-    manufacturerName: 'Hubspace', model: 'test-model', values,
+    manufacturerName: 'Hubspace', model: 'test-model', values, colorTempCategories,
   };
 }
 
@@ -240,6 +246,35 @@ describe('FanAccessory', () => {
       const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
       expect(patches).toEqual([
         expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '4505K' }),
+      ]);
+    });
+
+    it('snaps fan light color temperature to the nearest semantic category', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeFanDevice([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.POWER, 'on', 'light-power'),
+        sv(FC.COLOR_TEMP, '3000K'),
+      ], {
+        undefined: ['6500K', '5000K', '4000K', '3500K', '3000K', '2700K'],
+      });
+      new FanAccessory(platform as any, acc as any, device as any);
+      const onSetColorTemperature: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls.at(-1)[0];
+
+      onSetColorTemperature(172);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '6500K' }),
       ]);
     });
 
@@ -650,6 +685,31 @@ describe('LightAccessory', () => {
       const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
       expect(patches).toEqual([
         expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '4505K' }),
+      ]);
+    });
+
+    it('snaps color-temperature writes to device semantic category values', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeLightDevice([sv(FC.COLOR_TEMP, '3000K')], {
+        undefined: ['6500K', '5000K', '4000K', '3500K', '3000K', '2700K'],
+      });
+      new LightAccessory(platform as any, acc as any, device as any);
+      const onSetColorTemperature: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetColorTemperature(172);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      const [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.COLOR_TEMP, value: '6500K' }),
       ]);
     });
 
