@@ -106,7 +106,7 @@ export function rgbToHex(r: number, g: number, b: number): string {
 
 /** Kelvin → HomeKit mireds (clamped 140–500). */
 export function kelvinToMired(k: number): number {
-  return Math.min(500, Math.max(140, Math.round(1_000_000 / k)));
+  return isNaN(k) || k <= 0 ? 140 : Math.min(500, Math.max(140, Math.round(1_000_000 / k)));
 }
 
 /** Parse Hubspace color-temperature values such as 4000, "4000", or "4000K". */

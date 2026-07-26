@@ -148,8 +148,27 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.log.info(`Cloud returned ${devices.length} device(s).`);
 
     const seenUUIDs = new Set<string>();
+    // Accept both the current comma-separated string and the array shape used
+    // by earlier prerelease versions, so upgrading doesn't drop an existing
+    // exclusion list saved in config.json.
+    const rawExcluded = this.cfg.excludedDevices as string | string[] | undefined;
+    const excludedDevices = (Array.isArray(rawExcluded) ? rawExcluded : (rawExcluded ?? '').split(','))
+      .map(name => name.trim())
+      .filter(Boolean);
+    // Case-insensitive, matching the friendlyName-keyed dedup convention in
+    // hubspace-client.ts — users hand-type these names, so a case mismatch
+    // shouldn't silently fail to exclude anything.
+    const excludedLower = new Set(excludedDevices.map(name => name.toLowerCase()));
+    const matchedExclusions = new Set<string>();
 
     for (const device of devices) {
+      const friendlyLower = device.friendlyName.toLowerCase();
+      if (excludedLower.has(friendlyLower)) {
+        matchedExclusions.add(friendlyLower);
+        this.log.info(`Skipping excluded device: "${device.friendlyName}"`);
+        continue;
+      }
+
       if (!SUPPORTED_DEVICE_CLASSES.has(device.deviceClass.toLowerCase())) {
         const caps = [...new Set(device.values.map(v => v.functionClass))].join(', ') || 'none';
         const mfr = [device.manufacturerName, device.model].filter(Boolean).join(' / ') || 'unknown';
@@ -212,6 +231,12 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
         );
         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [pAccessory]);
         this.cachedAccessories.delete(uuid);
+      }
+    }
+
+    for (const name of excludedDevices) {
+      if (!matchedExclusions.has(name.toLowerCase())) {
+        this.log.warn(`excludedDevices entry "${name}" did not match any discovered device — check for a typo.`);
       }
     }
 
