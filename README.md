@@ -44,8 +44,8 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 | Hubspace Smart Switch | On/off | Implemented, untested |
 | EcoSmart Smart RGBWIC LED Strip Light (AL-HSTL-RGBICTW) | On/off · brightness · color temperature · RGB color | Tested with hardware |
 | EcoSmart Smart A19 Color Bulb (12A19060WRGBWH1) | On/off · brightness · color temperature · RGB color | Tested with hardware |
-| Vissani 5000 BTU Portable Air Conditioner (VAP05R1AWT) | Power on/off · cooling target temperature · fan speed (auto / low / high) · current temperature | Tested with hardware |
-| Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI) | Master power on/off · 3 independently controlled zones · overload fault detection | Implemented, untested |
+| Vissani Portable / Window Air Conditioners (`portable-air-conditioner`, including VAP05R1AWT and VAW06R1AWTS) | Power on/off · cooling target temperature · fan speed (low / medium / high) · current temperature | Tested with hardware and community logs |
+| Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI) | Master power on/off · 3 independently controlled zones · overload fault detection | Community tested |
 
 > ¹ **Device-dependent:** rotation direction requires the device to report the `fan-reverse` capability; Comfort Breeze requires `toggle[comfort-breeze]`. These tiles will not appear if the hardware doesn't support the capability — no config change needed.
 >
@@ -125,6 +125,7 @@ Minimal `config.json` entry under `"platforms"`:
 | `exposeMasterPowerSwitch` | boolean | `false` | Add a separate Switch tile for the ceiling-fan master power relay (only appears on fans where the master relay is distinct from the fan control) |
 | `exposeStatusFault` | boolean | `false` | Show a StatusFault indicator on fan and light tiles when the device is reported offline by the Hubspace cloud. Non-standard — visible in Eve and Controller for HomeKit; may not display in Apple Home. |
 | `invertOutletStatus` | boolean | `false` | Invert the reported on/off state for smart plugs that report their status backwards |
+| `excludedDevices` | string | — | Comma-separated Hubspace friendly names to skip during discovery. Matching is case-insensitive; unmatched entries are logged as warnings to catch typos. |
 | `tokenCachePath` | string | — | Override the path for the cached auth token file. Leave blank to use the Homebridge storage directory (recommended). |
 
 <a href="#homebridge-hubspace-platform">↑ Back to top</a>
