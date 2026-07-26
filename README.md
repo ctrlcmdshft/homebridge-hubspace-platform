@@ -10,7 +10,7 @@
     <img src="https://img.shields.io/github/license/ctrlcmdshft/homebridge-hubspace-platform" alt="MIT License" />
   </a>
   <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins">
-    <img src="https://img.shields.io/badge/homebridge-2.0%20compatible-blueviolet?logo=homebridge" alt="Homebridge 2.0 compatible" />
+    <img src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=flat" alt="Verified by Homebridge" />
   </a>
   <a href="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml">
     <img src="https://github.com/ctrlcmdshft/homebridge-hubspace-platform/actions/workflows/build.yml/badge.svg" alt="Build, Lint, and Test" />

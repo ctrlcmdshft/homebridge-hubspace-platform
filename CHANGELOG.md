@@ -4,51 +4,47 @@
 
 ---
 
-## [2.0.3-login-copenlc.1] - 2026-07-26
+## [2.1.0] - TBD
 
-### Release Notes
+This release adds support for portable/window air conditioners and Hampton Bay landscape transformers, hardens the Homebridge UI login flow, and rolls in field-tested fixes for fan speed, portable AC fan control, and Hubspace color-temperature formats.
 
-This prerelease combines the login UI/excluded-device work from the `login` branch with the field-tested portable AC and color-temperature fixes from the `copenlc` tester branch.
+### Added
 
-The portable AC changes were verified against logs from @jvmo's Vissani/Hubspace "Boys AC" unit, which reports fan speed as `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`. Thanks to @jvmo for repeated HomeKit slider tests, debug logs, and confirming the final write/readback behavior.
+- **Portable/window air conditioner support** — Hubspace `portable-air-conditioner` devices now appear as HomeKit **HeaterCooler** accessories with power, cooling target temperature, current temperature, and fan speed controls. Tested against Vissani/Hubspace units including VAP05R1AWT and VAW06R1AWTS-style fan-speed formats.
+- **Landscape transformer support** — Hampton Bay smart landscape transformers now expose a master power switch plus one HomeKit Switch per detected zone, with overload faults surfaced through `StatusFault`.
+- **Excluded devices setting** — new `excludedDevices` config option lets users skip selected Hubspace devices by friendly name. Matching is case-insensitive, accepts comma-separated names, and logs a warning when an entry does not match any discovered device.
 
-The color-temperature change was driven by logs from @justinglock40's "Ceiling Light" device that reports Kelvin values with a `K` suffix, such as `4000K`. Thanks to @justinglock40 for the PUT/GET state logs that exposed both the HTTP 400 write failure and the Homebridge `NaN` warning.
+### Fixed
 
-### Features
+- **Homebridge UI login reliability** — the custom login/2FA screen now uses explicit timeouts and server push acknowledgements for long login actions, preventing indefinite spinners and false "Connected" states after failed or dropped login messages.
+- **Repeated login request races** — overlapping login or OTP submissions are now rejected while a login is already in progress, preventing stale retries from corrupting the active 2FA session.
+- **Plugin UI status check delay** — `/auth-status` now uses normal request/response handling, so reopening plugin settings no longer waits several seconds for a one-time push event that may never arrive.
+- **Fan tile speed flash on power-on** — fans now report their stored speed even while inactive, preventing the Home app from briefly forcing the speed slider to 100% when turning a fan on.
+- **Portable AC fan speed formats** — portable AC models that report `fan-speed-N-VVV` values, such as `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`, now read and write the correct speed format.
+- **Portable AC fan slider behavior** — the fan slider keeps the last speed while off, ignores redundant speed writes during power-on, and snaps `RotationSpeed=0` back to the lowest fan speed instead of turning the AC off.
+- **Concurrent state writes** — accessory writes queued in the same event-loop tick are coalesced into one Hubspace PUT request, avoiding 400 errors when HomeKit sends power and speed changes together.
+- **Color-temperature parsing** — Hubspace values such as `4000K` are now parsed correctly and no longer produce Homebridge `NaN` warnings.
+- **Color-temperature writes** — Kelvin writes preserve the device's current value shape, and category-only color-temperature devices snap to the nearest supported semantic value such as `2700K`, `3000K`, `4000K`, `5000K`, or `6500K`.
+- **Invalid Kelvin guard** — invalid or zero Kelvin values now fall back to a valid HomeKit color-temperature value instead of producing `NaN` or `Infinity`.
+- **Write failure diagnostics** — failed SET STATE logs now include the sent function/value payload and API response body so device-specific 400 errors are easier to diagnose.
+- **Poll failure logs** — repeated per-device poll failures are suppressed after the third failure until the device recovers, and failure logs now include the friendly device name and ID.
 
-- **Portable AC support** — new `PortableAcAccessory` exposes Hubspace portable air conditioners as HomeKit **HeaterCooler** tiles; supports power on/off, cooling threshold temperature, current temperature (read-only), and fan speed (auto / low / high via RotationSpeed slider at 33 / 66 / 99%); overload and sensor faults surface as `StatusFault`; tested against Vissani VAP05R1AWT
-- **Landscape lighting transformer support** — new `LandscapeTransformerAccessory` exposes Hampton Bay smart landscape transformers; provides a master power switch and one independent Switch tile per zone (`zone-1`, `zone-2`, `zone-3`); overload protection surfaces as `StatusFault`; zone count is detected automatically from device capabilities
-- **`excludedDevices` config option** — comma-separated friendly names of devices to skip during discovery (e.g. `Bulb, Outdoor plug`); useful for sub-devices Hubspace exposes that you don't want in HomeKit; defaults to none
+### Changed
 
-### Bug Fixes
+- **Unsupported-device debug logs stay redacted** — unsupported device diagnostics now share the same formatted state logger used by verbose polling, including redaction for Wi-Fi, BLE MAC, and geo fields.
+- **Standalone dump script packaging** — `npm run dump` now runs `scripts/dump-devices.js` directly instead of building and shipping the old TypeScript dump entrypoint. The standalone script also has a visible password fallback for Windows/non-TTY prompts and now reads `HUBSPACE_EMAIL` / `HUBSPACE_PASS` environment variables.
+- **README updates** — supported devices, configuration, troubleshooting, and the dump-script instructions were updated, including Windows PowerShell examples.
 
-- **Fan tile flashes 100% on power-on** — when the fan was off, `getFanSpeed()` returned 0, so HomeKit displayed a 0% slider; on power-on the Home app sent a synthetic `RotationSpeed=100` which was visible for ~1 second before settling on the correct speed; `getFanSpeed()` now returns the last-used speed even when inactive, keeping the slider position stable and preventing the synthetic 100% write
-- **AC fan speed slider resets to 0% when off** — same root cause as the fan flash; `getAcFanSpeed()` now returns the stored device speed regardless of power state, keeping the HomeKit slider at the last-used position
-- **Concurrent write 400 errors** — when HomeKit fired multiple `onSet` handlers simultaneously (e.g. power + fan speed on tile tap), each handler dispatched a separate HTTP PUT which the Hubspace API rejected with 400; `setDeviceValues()` now coalesces all patches queued within the same event-loop tick into a single PUT
-- **Write failure log shows sent payload** — error log on a failed SET STATE now includes the exact patch that was sent (functionClass, functionInstance, value) alongside the full API response body, making 400 errors diagnosable without enabling verbose mode
-- **Plugin UI login could hang indefinitely** — the login/2FA setup screen relied on a single request/response round-trip over Homebridge's IPC channel, so a dropped message left the UI spinning forever with no way to recover; the UI server now proactively pushes `auth-status`, `start-login`, and `submit-otp` results as IPC push events, and the browser races each one against a timeout (`waitForPush`/`withTimeout`) so a lost message surfaces an error or falls back instead of hanging
-- **Plugin UI could report "Connected" after a failed login** — if the `/start-login` push timed out, the UI assumed success and saved credentials regardless of the actual outcome; a timeout now surfaces a clear retry error instead
-- **Concurrent login/OTP requests could corrupt session state** — overlapping `/start-login` or `/submit-otp` IPC messages (e.g. a stale retry after a client-side timeout) could race and clobber the in-progress OTP session; these routes are now serialized so a second attempt is rejected with a clear "already in progress" error instead of corrupting state
-- **`kelvinToMired` could return `NaN` or `Infinity`** — a zero or invalid Kelvin input passed straight through to the HomeKit color-temperature characteristic instead of being clamped; now falls back to 140 mireds
-- **Plugin UI always showed "Checking…" for the full 5 seconds on open** — `/auth-status` was fetched via a one-time server push sent at UI-process construction, but homebridge-config-ui-x reuses the same long-lived UI process across page loads, so only the very first page load ever saw that push; every later visit waited out the full timeout for a push that would never arrive; `/auth-status` now uses plain request/response (dispatched fresh on every call, regardless of process age), which is what it should have used all along since it's a fast local read with no risk of hanging
-- **`excludedDevices` matching was case-sensitive** — inconsistent with the case-insensitive `friendlyName` matching already used for fan/light dedup in `hubspace-client.ts`; a case mismatch in a hand-typed exclusion list would silently exclude nothing; matching is now case-insensitive, and any exclusion entry that doesn't match a discovered device now logs a warning to help catch typos
-- **Portable AC fan speed wrong/unresponsive on some models** — `PortableAcAccessory` only recognized the literal values `fan-speed-auto`/`fan-speed-low`/`fan-speed-high`; models that instead report the numeric `fan-speed-N-VVV` format (e.g. a 4-position Auto/Low/Med/High panel reporting `fan-speed-3-100`) fell through to a hardcoded 33% default on read, and writes sent a value format the device didn't recognize at all; now reuses the same `hubspeedToPercent`/`percentToHubspeed` converters already used for ceiling fans, which handle both formats correctly
-- **Portable AC fan changes sent redundant power writes** — HomeKit sometimes echoed `Active=on` while changing only the AC fan speed, which caused a bundled or duplicate `power=on` write alongside `fan-speed[ac-fan-speed]`; `PortableAcAccessory` now ignores redundant Active writes when the AC is already on, so fan changes send only the fan-speed patch
-- **Portable AC fan slider could turn the AC off** — dragging the HomeKit fan slider to the bottom sent `power=off`, even though the HeaterCooler tile already has a separate main power control; the fan slider now has a 33% floor and snaps `RotationSpeed=0` back to the lowest fan speed (`fan-speed-auto` or `fan-speed-3-033`) instead of powering the AC off
-- **K-suffixed color temperatures produced `NaN` and HTTP 400 errors** — some Hubspace lights report color temperature as strings like `4000K`; the old parser used `Number(value)`, producing `NaN` for HomeKit, and writes sent bare Kelvin strings like `"4505"` that affected devices rejected; color temperature parsing now accepts numeric, numeric-string, and `K`-suffixed values, and writes preserve the device's current value shape (e.g. `4505K`)
-- **Discrete color-temperature devices now snap to supported semantic categories** — when a Hubspace light only accepts values such as `2700K`, `3000K`, `4000K`, `5000K`, or `6500K`, HomeKit color-temperature writes are snapped to the nearest advertised category instead of sending arbitrary Kelvin values that the API rejects
+### Removed
+
+- **Removed `src/dump-devices.ts`** — the development-only TypeScript dump script is no longer compiled into `dist` or shipped in the npm package.
+- **Removed unused `@homebridge/plugin-ui-utils` dependency** — the custom UI server uses its own minimal IPC wrapper.
 
 ### Thanks
 
 - Thanks to @copenlc for the Hampton Bay landscape transformer capability dump and follow-up testing on issue #9.
-- Thanks to @jvmo for the portable AC testing on issue #10, especially the high/medium/low fan-speed PUT/GET logs for `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`.
+- Thanks to @jvmo for portable AC testing on issue #10, including fan-speed PUT/GET logs for `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`.
 - Thanks to @justinglock40 for the color-temperature report on issue #11 showing `color-temperature[undefined]=4000K` and the failed `"4505"` write.
-
-### Internal
-
-- **Added `test/platform.test.ts`** — covers `discoverDevices()`'s `excludedDevices` filtering (string and legacy array formats, case-insensitivity, typo warnings) and the unsupported-deviceClass path, which previously had no test coverage at all
-- **Removed `src/dump-devices.ts`** — the old TypeScript dump script compiled to `dist/dump-devices.js` and shipped unnecessarily in the npm tarball; it also lacked 2FA support; `npm run dump` now runs `scripts/dump-devices.js` directly (the 2FA-capable standalone version) without requiring a build step first
-- **Removed unused `@homebridge/plugin-ui-utils` dependency** — never imported; `homebridge-ui/server.js` implements its own minimal IPC class instead
 
 ---
 
