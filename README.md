@@ -117,7 +117,7 @@ Minimal `config.json` entry under `"platforms"`:
 | `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
-| `pollingInterval` | integer | `30` | How often (in seconds) to poll all device states. Minimum 10 s, maximum 600 s. Lower values give faster reflection of changes made in the Hubspace app. |
+| `pollingInterval` | integer | `300` with Conclave, `30` without | How often (in seconds) to poll all device states. Minimum 10 s, maximum 600 s. Lower values can help devices that do not reliably emit push events. |
 | `debug` | boolean | `false` | Log API/network activity: GET STATE, SET STATE, token refresh, Conclave details. Also dumps raw capabilities when an unsupported device is skipped. See also `verbose`. |
 | `verbose` | boolean | `false` | Log full device state on every poll cycle (noisy). Implies `debug`. Use this when [requesting support for a new device](#requesting-support-for-a-new-device). |
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
@@ -134,7 +134,7 @@ Minimal `config.json` entry under `"platforms"`:
 
 ## Real-time push (Conclave)
 
-The plugin maintains a persistent connection to the Afero Conclave push service. State changes — whether triggered from HomeKit or from the Hubspace app — are reflected in HomeKit within ~500 ms without waiting for a poll cycle. Regular polling (default every 30 s) runs in the background as a fallback for devices that don't emit push events.
+The plugin maintains a persistent connection to the Afero Conclave push service. State changes — whether triggered from HomeKit or from the Hubspace app — are reflected in HomeKit within ~500 ms without waiting for a poll cycle. Regular polling runs in the background as a fallback for devices that don't emit push events. The default polling interval is 300 s with Conclave enabled, or 30 s when Conclave is disabled.
 
 No configuration is required — Conclave is on by default. Set `"disableConclave": true` to fall back to polling only.
 

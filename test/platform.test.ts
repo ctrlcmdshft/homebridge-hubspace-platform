@@ -190,6 +190,48 @@ describe('HubspacePlatform polling logs', () => {
   });
 });
 
+describe('HubspacePlatform polling interval defaults', () => {
+  let setIntervalSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    setIntervalSpy = jest.spyOn(global, 'setInterval').mockReturnValue(123 as unknown as ReturnType<typeof setInterval>);
+  });
+
+  afterEach(() => {
+    setIntervalSpy.mockRestore();
+  });
+
+  it('defaults to 300 seconds when Conclave is enabled', () => {
+    const { platform, log } = makePlatform();
+
+    // startPolling() is private; call it directly to verify interval selection.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (platform as any).startPolling();
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 300_000);
+    expect(log.info).toHaveBeenCalledWith('Starting state polling every 300s.');
+  });
+
+  it('defaults to 30 seconds when Conclave is disabled', () => {
+    const { platform, log } = makePlatform({ disableConclave: true });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (platform as any).startPolling();
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 30_000);
+    expect(log.info).toHaveBeenCalledWith('Starting state polling every 30s.');
+  });
+
+  it('honors explicit pollingInterval regardless of Conclave mode', () => {
+    const { platform } = makePlatform({ disableConclave: false, pollingInterval: 45 });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (platform as any).startPolling();
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 45_000);
+  });
+});
+
 describe('HubspacePlatform discoverDevices — excludedDevices', () => {
   it('skips devices whose friendlyName matches excludedDevices (comma-separated string)', async () => {
     const { platform, log, registerPlatformAccessories } = makePlatform({

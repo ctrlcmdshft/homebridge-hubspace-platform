@@ -32,7 +32,7 @@
         "default": 300,
         "minimum": 10,
         "maximum": 600,
-        "description": "How often to poll device state as a fallback (10–600 s). When Conclave push is active (the default), real-time updates arrive instantly and polling is rarely needed — leave at 300 s unless Conclave is disabled."
+        "description": "How often to poll device state as a fallback (10–600 s). When omitted, the plugin uses 300 s with Conclave enabled or 30 s when Conclave is disabled. Set a lower value if a device does not reliably emit push events."
       },
       "tokenCachePath": {
         "title": "Token Cache Path (advanced)",
