@@ -1,0 +1,46 @@
+import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
+import { HubspaceClient } from './hubspace-client';
+export declare class HubspacePlatform implements DynamicPlatformPlugin {
+    readonly log: Logger;
+    readonly api: API;
+    readonly Service: typeof Service;
+    readonly Characteristic: typeof Characteristic;
+    private readonly handlers;
+    private readonly cachedAccessories;
+    readonly client: HubspaceClient;
+    readonly debug: boolean;
+    readonly verbose: boolean;
+    readonly exposeStatusFault: boolean;
+    readonly invertOutletStatus: boolean;
+    private readonly configured;
+    private pollTimer;
+    private consecutiveFailCycles;
+    private readonly pollFailureCounts;
+    private conclaveActive;
+    private readonly pendingQuickPolls;
+    private readonly conclaveIdMap;
+    private readonly cfg;
+    private readonly conclaveLog;
+    private readonly pollLog;
+    constructor(log: Logger, config: PlatformConfig, api: API);
+    configureAccessory(accessory: PlatformAccessory): void;
+    private removeAllCachedAccessories;
+    private onReady;
+    private onShutdown;
+    private discoverDevices;
+    private restoreCachedHandlers;
+    private startPolling;
+    private stopPolling;
+    scheduleQuickPoll(conclaveId: string, delayMs: number): void;
+    private scheduleFullSweep;
+    private resolveConclaveId;
+    private pollDevices;
+    private logPollFailure;
+    private logPollRecovery;
+    private deviceLabel;
+    private formatPollError;
+    private setupMasterPowerCompanion;
+    private setupComfortBreezeCompanion;
+    private buildContext;
+}
+//# sourceMappingURL=platform.d.ts.map
