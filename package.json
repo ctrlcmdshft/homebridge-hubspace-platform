@@ -1,7 +1,7 @@
 {
   "name": "homebridge-hubspace-platform",
   "displayName": "Homebridge Hubspace Platform",
-  "version": "2.0.3-login-copenlc.1",
+  "version": "2.0.3-alpha.1",
   "description": "Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, and switches.",
   "license": "MIT",
   "author": "ctrlcmdshft",
@@ -29,6 +29,7 @@
     "check:ui": "node --check homebridge-ui/server.js",
     "test": "jest",
     "test:coverage": "jest --coverage",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run lint && npm run check:ui && npm run build",
     "clean": "rm -rf dist/",
     "dump": "node scripts/dump-devices.js"
