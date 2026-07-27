@@ -206,6 +206,12 @@ homebridge.addEventListener('ready', async () => {
     });
   }
 
+  async function requestWithPushFallback(route, body, ms) {
+    const pushP = waitForPush(route, ms).catch(() => undefined);
+    const requestP = homebridge.request(route, body).catch(() => undefined);
+    return withTimeout(Promise.race([requestP, pushP]), ms);
+  }
+
   // ── saveConfig: save username+password to plugin config ──────────────────────
   async function saveConfig(username, password) {
     const configs = await homebridge.getPluginConfig();
@@ -262,14 +268,10 @@ homebridge.addEventListener('ready', async () => {
     setLoading('btn-start', 'btn-start-spinner', true);
     let showing2fa = false;
     try {
-      // Attempt PKCE — server receives the request and pushes the result back.
+      // Attempt PKCE. Prefer the direct request response; keep push as a
+      // compatibility fallback for older Homebridge UI IPC behavior.
       let pkceResult;
-      let timedOut = false;
-      try {
-        const pushP = waitForPush('/start-login', 12000);
-        homebridge.request('/start-login', { username, password }).catch(() => {});
-        pkceResult = await pushP;
-      } catch { timedOut = true; }
+      pkceResult = await requestWithPushFallback('/start-login', { username, password }, 20000);
 
       if (pkceResult?.needed2fa) {
         showing2fa = true;
@@ -278,7 +280,7 @@ homebridge.addEventListener('ready', async () => {
         setTimeout(() => $('o1').focus(), 50);
         return;
       }
-      if (timedOut) {
+      if (!pkceResult) {
         setAlert('creds-alert', 'Server did not respond — please restart Homebridge and try again.');
         return;
       }
@@ -311,11 +313,8 @@ homebridge.addEventListener('ready', async () => {
     setLoading('btn-otp', 'btn-otp-spinner', true);
     try {
       let otpResult;
-      try {
-        const pushP = waitForPush('/submit-otp', 12000);
-        homebridge.request('/submit-otp', { emailCode: getOtpCode() }).catch(() => {});
-        otpResult = await pushP;
-      } catch {
+      otpResult = await requestWithPushFallback('/submit-otp', { emailCode: getOtpCode() }, 20000);
+      if (!otpResult) {
         setAlert('otp-alert', 'Server did not respond — please restart Homebridge and try again.');
         clearOtp();
         setTimeout(() => $('o1').focus(), 50);
