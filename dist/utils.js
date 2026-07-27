@@ -127,7 +127,7 @@ function rgbToHex(r, g, b) {
         .join('');
 }
 function kelvinToMired(k) {
-    return isNaN(k) || k <= 0 ? 140 : Math.min(500, Math.max(140, Math.round(1_000_000 / k)));
+    return isNaN(k) || k <= 0 ? 154 : Math.min(500, Math.max(154, Math.round(1_000_000 / k)));
 }
 function parseKelvin(value) {
     if (typeof value === 'number' && Number.isFinite(value))
