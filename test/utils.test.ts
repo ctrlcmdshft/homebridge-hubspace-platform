@@ -213,22 +213,22 @@ describe('kelvinToMired', () => {
     expect(kelvinToMired(6500)).toBe(154);
   });
 
-  it('clamps to minimum 140 for very high kelvin', () => {
-    // 1_000_000 / 10000 = 100, which is below the 140 floor
-    expect(kelvinToMired(10000)).toBe(140);
+  it('clamps to minimum 154 for very high kelvin', () => {
+    // 1_000_000 / 10000 = 100, which is below the 154 floor
+    expect(kelvinToMired(10000)).toBe(154);
   });
 
   it('clamps high values to 500', () => {
     expect(kelvinToMired(1000)).toBe(500);
   });
 
-  it('falls back to 140 for NaN input', () => {
-    expect(kelvinToMired(NaN)).toBe(140);
+  it('falls back to 154 for NaN input', () => {
+    expect(kelvinToMired(NaN)).toBe(154);
   });
 
-  it('falls back to 140 for zero or negative input', () => {
-    expect(kelvinToMired(0)).toBe(140);
-    expect(kelvinToMired(-100)).toBe(140);
+  it('falls back to 154 for zero or negative input', () => {
+    expect(kelvinToMired(0)).toBe(154);
+    expect(kelvinToMired(-100)).toBe(154);
   });
 });
 
