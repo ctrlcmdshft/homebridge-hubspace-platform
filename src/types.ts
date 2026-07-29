@@ -8,7 +8,7 @@ export interface HubspaceConfig {
   name: string;
   username: string;
   password: string;
-  /** Polling interval in seconds (default 30). */
+  /** Polling interval in seconds (default 300 with Conclave, 30 without). */
   pollingInterval?: number;
   /** Override path for the token cache JSON file. */
   tokenCachePath?: string;
