@@ -19,7 +19,7 @@
 
 # Homebridge Hubspace Platform
 
-Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, and switches directly from the Home app or with Siri.
+Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, switches, portable/window air conditioners, and landscape transformers from the Home app or with Siri.
 
 > **Disclaimer:** This is an unofficial, community-driven plugin. [See disclaimer below.](#disclaimer)
 
@@ -35,67 +35,56 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 ## Supported devices
 
-| Device | Features | Status |
-| --- | --- | --- |
-| Hampton Bay Universal Smart Fan Controller (76278) | Fan on/off · 4 speeds · light on/off · brightness · rotation direction ¹ · Comfort Breeze ¹ | Tested with hardware |
-| Defiant Smart Indoor Plug (HPPA11AWB) | On/off | Tested with hardware |
-| Commercial Electric Smart Surge Protector (LA-12A-C) | 4 smart outlets (of 6 total) independently controlled | Tested with hardware |
-| Defiant Smart Wi-Fi Outdoor Plug (HPPA52CWB) | 2 independently controlled outlets | Tested with hardware |
-| Hubspace Smart Switch | On/off | Implemented, untested |
-| EcoSmart Smart RGBWIC LED Strip Light (AL-HSTL-RGBICTW) | On/off · brightness · color temperature · RGB color | Tested with hardware |
-| EcoSmart Smart A19 Color Bulb (12A19060WRGBWH1) | On/off · brightness · color temperature · RGB color | Tested with hardware |
-| Vissani Portable / Window Air Conditioners (`portable-air-conditioner`, including VAP05R1AWT and VAW06R1AWTS) | Power on/off · cooling target temperature · fan speed (low / medium / high) · current temperature | Tested with hardware and community logs |
-| Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI) | Master power on/off · 3 independently controlled zones · overload fault detection | Community tested |
+Support is capability-based, so nearby Hubspace models often work even if they are not listed by name. The models below are the ones this plugin has been tested against or implemented from community logs.
 
-> ¹ **Device-dependent:** rotation direction requires the device to report the `fan-reverse` capability; Comfort Breeze requires `toggle[comfort-breeze]`. These tiles will not appear if the hardware doesn't support the capability — no config change needed.
->
-> **Note:** Smart switches are implemented based on the Afero API but have not yet been verified with real hardware. If you own one and can confirm it works (or find a bug), please open an issue.
->
-> **Hubspace light bulbs:** All EcoSmart/Hubspace A19 bulbs (color changing and tunable white variants) should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only. The plugin detects capabilities automatically.
+| Category | Examples / classes | HomeKit exposure | Status |
+| --- | --- | --- | --- |
+| Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); `fan`, `ceiling-fan` | Fan on/off, speed, light kit on/off, brightness, rotation direction when reported, optional Comfort Breeze and master-power switches | Tested with hardware |
+| Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Tested with hardware |
+| Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Tested with hardware |
+| Switches | Hubspace Smart Switch; `switch` | Switch on/off | Implemented, untested |
+| Portable/window ACs | Vissani VAP05R1AWT, VAW06R1AWTS-style models; `portable-air-conditioner` | HeaterCooler service with power, cool-only target mode, cooling setpoint, current temperature, fan speed, StatusFault | Tested with hardware and community logs |
+| Landscape transformers | Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI); `landscape-transformer` | Master switch, one switch per detected zone, overload StatusFault | Community tested |
 
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
+Device-dependent controls only appear when the Hubspace API reports the matching capability:
 
----
+| Control | Required Hubspace capability |
+| --- | --- |
+| Fan rotation direction | `fan-reverse` |
+| Comfort Breeze switch | `toggle[comfort-breeze]` and `exposeComfortBreeze: true` |
+| Master-power switch | Separate `power[primary]` and `power[fan-power]`, plus `exposeMasterPowerSwitch: true` |
+| RGB color | `color-rgb` |
+| Color temperature | `color-temperature` |
+
+All EcoSmart/Hubspace A19 bulbs should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only.
+
+Smart switches are implemented based on the Afero API but have not yet been verified with real hardware. If you own one and can confirm it works, or find a bug, please open an issue.
 
 ## Requirements
 
-- **Node.js** all active LTS releases (currently 22 and 24)
-- **Homebridge** ≥ 1.8.0 or 2.x
+- **Node.js** 22 or 24
+- **Homebridge** 1.8.0 or newer, including Homebridge 2.x
 - A Hubspace / Home Depot account with at least one paired device
-
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
 
 ## Two-factor authentication (2FA)
 
-Accounts protected by email-code 2FA are fully supported. After installing the plugin, open **Plugin Settings** in the Homebridge UI and click **Start Login**. The plugin walks you through a secure PKCE OAuth flow using the official Hubspace iOS client — no credentials are sent anywhere except Hubspace's own servers.
+Accounts protected by email-code 2FA are supported. After installing the plugin, open **Plugin Settings** in the Homebridge UI and click **Start Login**. The plugin walks you through a PKCE OAuth flow using the official Hubspace iOS client. Credentials are sent only to Hubspace's own servers.
 
 - **No 2FA on your account?** Login completes automatically after you enter your username and password — no extra steps.
 - **2FA enabled?** You'll be prompted to enter the one-time code from your email before the session is saved.
 
-Authentication is cached so you only need to log in once. If the cache expires or is deleted, open Plugin Settings to log in again.
-
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
+Authentication tokens are cached locally so you only need to log in again when the cache expires, is deleted, or you change accounts.
 
 ## Installation
 
-The right method depends on your setup:
-
 | Setup | How to install |
 |---|---|
-| Homebridge UI (recommended) | Plugins tab → search `homebridge-hubspace-platform` → Install → Settings → enter credentials → Restart |
-| `hb-service` (Linux / Raspberry Pi) | Use the Homebridge UI, or `sudo npm install -g homebridge-hubspace-platform` then restart |
-| Docker | Use the Homebridge UI inside the container, or add to your startup config |
-| Manual Node install | `npm install -g homebridge-hubspace-platform` — only if Homebridge itself was installed globally via npm |
+| Homebridge UI (recommended) | Plugins tab → search `homebridge-hubspace-platform` → Install → Settings → sign in → Restart |
+| `hb-service` on Linux / Raspberry Pi | Use the Homebridge UI, or install globally with `sudo npm install -g homebridge-hubspace-platform` and restart Homebridge |
+| Docker | Use the Homebridge UI inside the container, or add the plugin to your container startup config |
+| Manual global Homebridge install | `npm install -g homebridge-hubspace-platform`, only when Homebridge itself is installed globally with npm |
 
 > **Note:** `npm install -g` installs into the system Node prefix, not the Homebridge plugin directory. On most setups (Docker, hb-service, HOOBS) the plugin won't be found. Prefer the Homebridge UI where possible.
-
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
 
 ## Configuration
 
@@ -117,9 +106,9 @@ Minimal `config.json` entry under `"platforms"`:
 | `platform` | string | **required** | Must be `"HubspacePlatform"` |
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
-| `pollingInterval` | integer | `300` with Conclave, `30` without | How often (in seconds) to poll all device states. Minimum 10 s, maximum 600 s. Lower values can help devices that do not reliably emit push events. |
-| `debug` | boolean | `false` | Log API/network activity: GET STATE, SET STATE, token refresh, Conclave details. Also dumps raw capabilities when an unsupported device is skipped. See also `verbose`. |
-| `verbose` | boolean | `false` | Log full device state on every poll cycle (noisy). Implies `debug`. Use this when [requesting support for a new device](#requesting-support-for-a-new-device). |
+| `pollingInterval` | integer | `300` with Conclave, `30` without | Polling fallback interval in seconds. Valid range: 10-600. Lower values can help devices that do not reliably emit push events. |
+| `debug` | boolean | `false` | Log API/network activity, token refreshes, Conclave details, and raw capabilities for unsupported devices. |
+| `verbose` | boolean | `false` | Log full device state on every poll cycle. Very noisy; use this when [requesting support for a new device](#requesting-support-for-a-new-device). Implies `debug`. |
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
 | `exposeComfortBreeze` | boolean | `false` | Add a separate "Comfort Breeze" Switch tile for ceiling fans that support it |
 | `exposeMasterPowerSwitch` | boolean | `false` | Add a separate Switch tile for the ceiling-fan master power relay (only appears on fans where the master relay is distinct from the fan control) |
@@ -128,19 +117,20 @@ Minimal `config.json` entry under `"platforms"`:
 | `excludedDevices` | string | — | Comma-separated Hubspace friendly names to skip during discovery. Matching is case-insensitive; unmatched entries are logged as warnings to catch typos. |
 | `tokenCachePath` | string | — | Override the path for the cached auth token file. Leave blank to use the Homebridge storage directory (recommended). |
 
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
+> Outlets, portable/window air conditioners, and landscape transformers expose fault status automatically where HomeKit supports it. The `exposeStatusFault` option only adds the non-standard fault characteristic to fan and light services.
 
 ## Real-time push (Conclave)
 
-The plugin maintains a persistent connection to the Afero Conclave push service. State changes — whether triggered from HomeKit or from the Hubspace app — are reflected in HomeKit within ~500 ms without waiting for a poll cycle. Regular polling runs in the background as a fallback for devices that don't emit push events. The default polling interval is 300 s with Conclave enabled, or 30 s when Conclave is disabled.
+The plugin maintains a persistent connection to the Afero Conclave push service. State changes, whether triggered from HomeKit or from the Hubspace app, are reflected in HomeKit without waiting for the next poll cycle. Regular polling still runs in the background as a fallback for devices that do not emit push events.
+
+Default polling interval:
+
+| Mode | Default |
+| --- | --- |
+| Conclave enabled | 300 s |
+| Conclave disabled | 30 s |
 
 No configuration is required — Conclave is on by default. Set `"disableConclave": true` to fall back to polling only.
-
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
 
 ## Troubleshooting
 
@@ -155,19 +145,15 @@ No configuration is required — Conclave is on by default. Set `"disableConclav
 - Verify your Homebridge host can reach `semantics2.afero.net`.
 
 **Device not appearing**
-- The log will show an `Unsupported deviceClass` warning for any skipped device. Enable `"debug": true` for a full capability dump, or run the [standalone dump script](#requesting-support-for-a-new-device) — no restart needed.
+- Check whether the device name is listed in `excludedDevices`.
+- The log will show an `Unsupported deviceClass` warning for unsupported devices. Enable `"debug": true` for a capability dump, or run the [standalone dump script](#requesting-support-for-a-new-device) — no restart needed.
 
 **Device appears but a characteristic is wrong**
 - Enable `"verbose": true` and restart Homebridge. Every poll cycle will print a `State for "..."` line with every capability and value the API returned. Paste that line in a GitHub issue along with a description of what HomeKit shows vs. what you expect.
 
-
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
-
 ## Requesting support for a new device
 
-If your Hubspace device doesn't appear in HomeKit, the plugin has skipped it because its `deviceClass` isn't implemented yet. Choose whichever method is easiest to gather the capability info needed to add support.
+If your Hubspace device does not appear in HomeKit and it is not intentionally excluded, the plugin may not support its `deviceClass` yet. Choose either method below to gather the capability data needed to add support.
 
 ### Option A — Standalone script (easiest)
 
@@ -193,7 +179,13 @@ curl.exe -o $env:TEMP\hubspace-dump.js https://raw.githubusercontent.com/ctrlcmd
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/scripts/dump-devices.js -OutFile $env:TEMP\hubspace-dump.js; node $env:TEMP\hubspace-dump.js
 ```
 
-It prompts for your Hubspace email (visible) and password (hidden on macOS/Linux, visible on Windows — just type and press Enter). When it finishes you'll see:
+You can also provide credentials with environment variables, which is useful for non-interactive runs:
+
+```bash
+HUBSPACE_EMAIL="you@example.com" HUBSPACE_PASS="your-hubspace-password" node /tmp/hubspace-dump.js
+```
+
+The script prompts for your Hubspace email and password if the environment variables are not set. Password entry is hidden on macOS/Linux and visible on Windows. When it finishes, copy the output starting at this marker:
 
 ```
 ========= COPY FROM HERE =========
@@ -234,17 +226,9 @@ Copy everything from `COPY FROM HERE` to the end and paste it into your issue. Y
 
 [Open a GitHub issue](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues/new/choose) and paste the output from either method above, along with your device's name and model as shown in the Hubspace app.
 
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
-
 ## Development
 
 Local setup, API endpoint reference, authentication details, and the `discover.mjs` exploration script are documented in the [**Development wiki**](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/wiki/Development).
-
-<a href="#homebridge-hubspace-platform">↑ Back to top</a>
-
----
 
 ## Disclaimer
 
