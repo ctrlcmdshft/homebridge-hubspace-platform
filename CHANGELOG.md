@@ -4,7 +4,7 @@
 
 ---
 
-## [2.1.0] - TBD
+## [2.1.0] - 2026-07-31
 
 This release adds support for portable/window air conditioners and Hampton Bay landscape transformers, hardens the Homebridge UI login flow, and rolls in field-tested fixes for fan speed, portable AC fan control, and Hubspace color-temperature formats.
 
@@ -31,9 +31,9 @@ This release adds support for portable/window air conditioners and Hampton Bay l
 
 ### Changed
 
+- **README coverage refresh** — supported-device, requirements, configuration, Conclave, troubleshooting, and device-support instructions now describe portable/window ACs, landscape transformers, fault exposure, and the current polling defaults.
 - **Unsupported-device debug logs stay redacted** — unsupported device diagnostics now share the same formatted state logger used by verbose polling, including redaction for Wi-Fi, BLE MAC, and geo fields.
 - **Standalone dump script packaging** — `npm run dump` now runs `scripts/dump-devices.js` directly instead of building and shipping the old TypeScript dump entrypoint. The standalone script also has a visible password fallback for Windows/non-TTY prompts and now reads `HUBSPACE_EMAIL` / `HUBSPACE_PASS` environment variables.
-- **README updates** — supported devices, configuration, troubleshooting, and the dump-script instructions were updated, including Windows PowerShell examples.
 
 ### Removed
 
