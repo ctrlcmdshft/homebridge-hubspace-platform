@@ -14,10 +14,18 @@ import {
   rgbToHsv,
   parseColorRgb,
   kelvinToMired,
+  parseKelvin,
+  formatKelvinForHubspace,
   miredToKelvin,
   hubspeedToPercent,
   percentToHubspeed,
+  formatStateValueForLog,
 } from './utils';
+
+type ColorTempCategory = {
+  kelvin: number;
+  value: string | number;
+};
 
 // ─── Base accessory ───────────────────────────────────────────────────────────
 
@@ -25,6 +33,8 @@ export abstract class BaseHubspaceAccessory {
   protected readonly log: Logger;
   /** Map key: `functionClass:functionInstance` → latest value object. */
   protected stateMap: Map<string, DeviceStateValue> = new Map();
+  /** Learned category values for color-temperature devices that reject arbitrary Kelvin writes. */
+  private readonly colorTempCategories = new Map<string, ColorTempCategory[]>();
   protected offline = false;
   private pollFails = 0;
   private static readonly OFFLINE_THRESHOLD = 3;
@@ -43,6 +53,7 @@ export abstract class BaseHubspaceAccessory {
   ) {
     this.log = createLogger(platform.log, 'Device');
     this.rebuildStateMap(device.values);
+    this.loadColorTempCategories(device.colorTempCategories);
     this.setupAccessoryInfo();
     this.setupServices();
   }
@@ -111,7 +122,7 @@ export abstract class BaseHubspaceAccessory {
     if (this.platform.verbose) {
       this.log.info(
         `State for "${this.device.friendlyName}": ` +
-        values.map(v => `${v.functionClass}[${v.functionInstance}]=${typeof v.value === 'object' ? JSON.stringify(v.value) : v.value}`).join(', '),
+        values.map(formatStateValueForLog).join(', '),
       );
     }
     if (wasOffline && !this.offline) {
@@ -146,6 +157,10 @@ export abstract class BaseHubspaceAccessory {
       if (key.startsWith('error-flag:') && v.value === true) {
         return this.platform.Characteristic.StatusFault.GENERAL_FAULT;
       }
+      // Devices that report error[name]=normal|<fault-code> (e.g. portable AC)
+      if (key.startsWith('error:') && v.value !== 'normal') {
+        return this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+      }
     }
     return this.platform.Characteristic.StatusFault.NO_FAULT;
   }
@@ -159,21 +174,54 @@ export abstract class BaseHubspaceAccessory {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  protected async setDeviceValues(
-    values: Partial<DeviceStateValue>[],
-  ): Promise<void> {
+  // Coalescing write queue: patches enqueued within the same event-loop tick are
+  // merged into a single PUT, preventing concurrent-request 400s from the API.
+  private readonly pendingWrites = new Map<string, Partial<DeviceStateValue>>();
+  private writeFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private writeInFlight = false;
+
+  protected setDeviceValues(values: Partial<DeviceStateValue>[]): void {
     this.applyOptimisticUpdate(values);
+    for (const patch of values) {
+      const key = `${patch.functionClass}:${patch.functionInstance ?? ''}`;
+      this.pendingWrites.set(key, patch);
+    }
+    this.scheduleWriteFlush();
+  }
+
+  private scheduleWriteFlush(): void {
+    if (!this.writeFlushTimer) {
+      this.writeFlushTimer = setTimeout(() => void this.flushWrites(), 0);
+    }
+  }
+
+  private async flushWrites(): Promise<void> {
+    this.writeFlushTimer = null;
+    if (this.writeInFlight) return;
+    if (this.pendingWrites.size === 0) return;
+    const patches = [...this.pendingWrites.values()];
+    this.pendingWrites.clear();
+    this.writeInFlight = true;
     try {
-      await this.platform.client.setDeviceState(this.device.id, values);
+      await this.platform.client.setDeviceState(this.device.id, patches);
       this.platform.scheduleQuickPoll(this.device.id, 3000);
     } catch (err) {
+      if (await this.retryWithAllowedColorTemperature(err, patches)) {
+        this.platform.scheduleQuickPoll(this.device.id, 3000);
+        return;
+      }
       const detail = isAxiosError(err)
-        ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? err.message}` +
+        ? `HTTP ${err.response?.status} — ${err.response?.data?.error ?? JSON.stringify(err.response?.data) ?? err.message}` +
           (err.response?.data?.requestId ? ` (requestId: ${err.response.data.requestId})` : '')
         : String(err);
-      this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail}`);
-      // Revert optimistic state immediately on failure.
+      const patchSummary = patches.map(p => `${p.functionClass}[${p.functionInstance}]=${JSON.stringify(p.value)}`).join(', ');
+      this.log.error(`Failed to set state for "${this.device.friendlyName}": ${detail} | sent: ${patchSummary}`);
       this.platform.scheduleQuickPoll(this.device.id, 0);
+    } finally {
+      this.writeInFlight = false;
+      if (this.pendingWrites.size > 0) {
+        this.scheduleWriteFlush();
+      }
     }
   }
 
@@ -203,6 +251,93 @@ export abstract class BaseHubspaceAccessory {
       functionInstance: existing !== undefined ? existing.functionInstance : (functionInstance ?? 'primary'),
       value,
     };
+  }
+
+  protected colorTempPatchValue(kelvin: number, current: DeviceStateValue | undefined): string | number {
+    const allowed = this.colorTempCategories.get(this.stateKey(FC.COLOR_TEMP, current?.functionInstance));
+    if (allowed) {
+      return this.nearestColorTempCategory(kelvin, allowed).value;
+    }
+    return formatKelvinForHubspace(kelvin, current?.value);
+  }
+
+  private async retryWithAllowedColorTemperature(
+    err: unknown,
+    patches: Partial<DeviceStateValue>[],
+  ): Promise<boolean> {
+    if (!isAxiosError(err) || err.response?.status !== 400) return false;
+
+    const allowed = this.parseAllowedKelvinValues(err.response?.data?.error);
+    if (allowed.length === 0) return false;
+
+    let changed = false;
+    const retryPatches = patches.map((patch) => {
+      if (patch.functionClass !== FC.COLOR_TEMP) return patch;
+
+      const requestedKelvin = parseKelvin(patch.value);
+      if (requestedKelvin === null) return patch;
+
+      const snapped = this.nearestColorTempCategory(requestedKelvin, allowed);
+      const retryPatch = {
+        ...patch,
+        value: snapped.value,
+      };
+      this.colorTempCategories.set(this.stateKey(FC.COLOR_TEMP, patch.functionInstance), allowed);
+      changed = changed || retryPatch.value !== patch.value;
+      return retryPatch;
+    });
+
+    if (!changed) return false;
+
+    await this.platform.client.setDeviceState(this.device.id, retryPatches);
+    this.applyOptimisticUpdate(retryPatches);
+    if (this.platform.debug) {
+      this.log.info(
+        `Retried color-temperature for "${this.device.friendlyName}" with nearest supported value: ` +
+        retryPatches
+          .filter(p => p.functionClass === FC.COLOR_TEMP)
+          .map(p => `${p.functionClass}[${p.functionInstance}]=${JSON.stringify(p.value)}`)
+          .join(', '),
+      );
+    }
+    return true;
+  }
+
+  private parseAllowedKelvinValues(error: unknown): ColorTempCategory[] {
+    if (typeof error !== 'string' || !error.includes('color-temperature')) return [];
+
+    const values = new Map<number, string>();
+    const re = /\bname=([0-9]+(?:\.[0-9]+)?)\s*K\b/gi;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(error)) !== null) {
+      const kelvin = Number(match[1]);
+      if (Number.isFinite(kelvin)) values.set(kelvin, `${match[1]}K`);
+    }
+
+    return [...values.entries()]
+      .map(([kelvin, value]) => ({ kelvin, value }))
+      .sort((a, b) => a.kelvin - b.kelvin);
+  }
+
+  private nearestColorTempCategory(kelvin: number, allowed: ColorTempCategory[]): ColorTempCategory {
+    return allowed.reduce((nearest, candidate) =>
+      Math.abs(candidate.kelvin - kelvin) < Math.abs(nearest.kelvin - kelvin) ? candidate : nearest,
+    allowed[0]);
+  }
+
+  private loadColorTempCategories(categories: Record<string, Array<string | number>> | undefined): void {
+    for (const [instance, values] of Object.entries(categories ?? {})) {
+      const parsed = values
+        .map(value => ({ kelvin: parseKelvin(value), value }))
+        .filter((item): item is ColorTempCategory => item.kelvin !== null);
+      if (parsed.length > 0) {
+        this.colorTempCategories.set(this.stateKey(FC.COLOR_TEMP, instance === 'undefined' ? undefined : instance), parsed);
+      }
+    }
+  }
+
+  private stateKey(functionClass: string, functionInstance: string | undefined): string {
+    return `${functionClass}:${functionInstance}`;
   }
 }
 
@@ -289,9 +424,11 @@ export class LightAccessory extends BaseHubspaceAccessory {
   private getColorTemp(): CharacteristicValue {
     const v = this.findValue(FC.COLOR_TEMP);
     if (!v) return 370; // 2702 K default
+    const kelvin = parseKelvin(v.value);
+    if (kelvin === null) return 370;
     const minMired = kelvinToMired(6500); // 154
     const maxMired = kelvinToMired(2700); // 370
-    return Math.min(maxMired, Math.max(minMired, kelvinToMired(Number(v.value))));
+    return Math.min(maxMired, Math.max(minMired, kelvinToMired(kelvin)));
   }
 
   private getHue(): CharacteristicValue {
@@ -309,7 +446,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
   // ── Setters ───────────────────────────────────────────────────────────────────
 
   private async setPower(on: boolean): Promise<void> {
-    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
+    this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
   }
 
   private brightnessTimer: ReturnType<typeof setTimeout> | null = null;
@@ -324,7 +461,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
       if (rounded > 0 && !this.getPower()) {
         patches.push(this.buildPatch(FC.POWER, 'on'));
       }
-      await this.setDeviceValues(patches);
+      this.setDeviceValues(patches);
     }, 300);
   }
 
@@ -334,13 +471,14 @@ export class LightAccessory extends BaseHubspaceAccessory {
     if (this.colorTempTimer) clearTimeout(this.colorTempTimer);
     this.colorTempTimer = setTimeout(async () => {
       const k = miredToKelvin(mireds);
+      const current = this.findValue(FC.COLOR_TEMP);
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildPatch(FC.COLOR_TEMP, k.toString()),
+        this.buildPatch(FC.COLOR_TEMP, this.colorTempPatchValue(k, current)),
       ];
       if (this.findValue(FC.COLOR_MODE)) {
         patches.push(this.buildPatch(FC.COLOR_MODE, 'white'));
       }
-      await this.setDeviceValues(patches);
+      this.setDeviceValues(patches);
     }, 300);
   }
 
@@ -371,7 +509,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
       if (this.findValue(FC.COLOR_MODE)) {
         patches.push(this.buildPatch(FC.COLOR_MODE, 'color'));
       }
-      await this.setDeviceValues(patches);
+      this.setDeviceValues(patches);
       this.pendingHue = null;
       this.pendingSat = null;
     }, 150);
@@ -413,6 +551,11 @@ export class FanAccessory extends BaseHubspaceAccessory {
   declare private lightSvc: Service | null;
   private cbAcc: PlatformAccessory | null = null;
   private mpAcc: PlatformAccessory | null = null;
+  private rememberedFanSpeedValue: DeviceStateValue['value'] | null = null;
+  private restoreFanSpeedValue: DeviceStateValue['value'] | null = null;
+  private restoreFanSpeedTimer: ReturnType<typeof setTimeout> | null = null;
+  private suppressTurnOnSpeedPercent: number | null = null;
+  private suppressTurnOnSpeedTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected setupServices(): void {
     this.lightSvc = null;
@@ -433,6 +576,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
     // Rotation speed — 0 = off, 25/50/75/100 = speed steps.
     if (this.findValue(FC.FAN_SPEED)) {
+      this.rememberCurrentFanSpeed();
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .updateValue(this.getFanSpeed())
         .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
@@ -463,6 +607,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
     // ── Optional light kit service ────────────────────────────────────────────
     const lightPower = this.findValue(FC.POWER, 'light-power');
     const hasBrightness = this.findValue(FC.BRIGHTNESS) !== undefined;
+    const hasColorTemp = this.findValue(FC.COLOR_TEMP) !== undefined;
     if (lightPower) {
       this.lightSvc =
         this.accessory.getService(this.platform.Service.Lightbulb) ??
@@ -486,11 +631,35 @@ export class FanAccessory extends BaseHubspaceAccessory {
           })
           .onSet((v) => { void this.setLightBrightness(v as number); });
       }
+
+      if (hasColorTemp) {
+        const minK = 2700, maxK = 6500;
+        this.lightSvc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
+          .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getLightColorTemp();
+          })
+          .onSet((v) => { void this.setLightColorTemp(v as number); });
+      }
     }
 
   }
 
   // ── Fan getters / setters ─────────────────────────────────────────────────────
+
+  override updateState(values: DeviceStateValue[]): void {
+    const incomingPower = this.findFanPowerValueIn(values);
+    const incomingActive = incomingPower?.value === 'on'
+      || incomingPower?.value === 'true'
+      || incomingPower?.value === true
+      || incomingPower?.value === 1;
+    const incomingSpeed = values.find(v => v.functionClass === FC.FAN_SPEED);
+    if (incomingSpeed && incomingActive && !this.isRestoringDifferentFanSpeed(incomingSpeed.value)) {
+      this.rememberFanSpeed(incomingSpeed.value);
+    }
+    super.updateState(values);
+  }
 
   private findFanPowerValue(): DeviceStateValue | undefined {
     // Prefer explicit fan-power instance; fall back to any power value.
@@ -498,6 +667,14 @@ export class FanAccessory extends BaseHubspaceAccessory {
       this.findValue(FC.POWER, 'fan-power') ??
       this.findValue(FC.POWER, 'primary') ??
       this.findValue(FC.POWER)
+    );
+  }
+
+  private findFanPowerValueIn(values: DeviceStateValue[]): DeviceStateValue | undefined {
+    return (
+      values.find(v => v.functionClass === FC.POWER && v.functionInstance === 'fan-power') ??
+      values.find(v => v.functionClass === FC.POWER && v.functionInstance === 'primary') ??
+      values.find(v => v.functionClass === FC.POWER)
     );
   }
 
@@ -514,26 +691,153 @@ export class FanAccessory extends BaseHubspaceAccessory {
     instance: string | undefined,
   ): Promise<void> {
     const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
-    await this.setDeviceValues([
+    const wasInactive = this.getFanActive() === this.platform.Characteristic.Active.INACTIVE;
+    const patches: Partial<DeviceStateValue>[] = [
       this.buildPatch(FC.POWER, on ? 'on' : 'off', instance),
-    ]);
+    ];
+    if (on && wasInactive) {
+      const storedSpeedPatch = this.buildRememberedFanSpeedPatch();
+      const storedSpeed = storedSpeedPatch
+        ? hubspeedToPercent(String(storedSpeedPatch.value))
+        : 0;
+      if (storedSpeedPatch) {
+        patches.push(storedSpeedPatch);
+        this.scheduleFanSpeedRestore(storedSpeedPatch.value as DeviceStateValue['value']);
+      }
+      if (storedSpeed > 0 && storedSpeed < 100) {
+        this.suppressTurnOnSpeedPercent = 100;
+        if (this.suppressTurnOnSpeedTimer) clearTimeout(this.suppressTurnOnSpeedTimer);
+        this.suppressTurnOnSpeedTimer = setTimeout(() => {
+          this.suppressTurnOnSpeedPercent = null;
+          this.suppressTurnOnSpeedTimer = null;
+        }, 1000);
+      }
+    } else {
+      this.clearSuppressedTurnOnSpeed();
+      this.clearFanSpeedRestore();
+    }
+    this.setDeviceValues(patches);
   }
 
-  private getFanSpeed(): CharacteristicValue {
-    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) return 0;
+  private getStoredFanSpeed(): number {
+    if (this.restoreFanSpeedValue !== null) {
+      return hubspeedToPercent(String(this.restoreFanSpeedValue));
+    }
     const v = this.findValue(FC.FAN_SPEED);
     return v ? hubspeedToPercent(String(v.value)) : 50;
   }
 
+  private getFanSpeed(): CharacteristicValue {
+    if (this.getFanActive() === this.platform.Characteristic.Active.INACTIVE) {
+      // Report stored speed even when off so HomeKit slider stays at the last speed.
+      // This prevents the Home app from sending a synthetic RotationSpeed=100 on power-on,
+      // which would cause the tile to flash 100% before settling on the correct speed.
+      return this.rememberedFanSpeedValue !== null
+        ? hubspeedToPercent(String(this.rememberedFanSpeedValue))
+        : 0;
+    }
+    return this.getStoredFanSpeed();
+  }
+
   private async setFanSpeed(percent: number): Promise<void> {
     if (percent === 0) {
+      this.clearSuppressedTurnOnSpeed();
       const fanPower = this.findFanPowerValue();
-      await this.setDeviceValues([this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance)]);
+      this.setDeviceValues([this.buildPatch(FC.POWER, 'off', fanPower?.functionInstance)]);
       return;
     }
+    const rememberedSpeed = this.rememberedFanSpeedValue === null
+      ? 0
+      : hubspeedToPercent(String(this.rememberedFanSpeedValue));
+    if (
+      this.getFanActive() === this.platform.Characteristic.Active.INACTIVE
+      && percent === 100
+      && rememberedSpeed > 0
+      && rememberedSpeed < 100
+    ) {
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        rememberedSpeed,
+      );
+      return;
+    }
+    if (this.suppressTurnOnSpeedPercent === percent) {
+      this.clearSuppressedTurnOnSpeed();
+      this.fanSvc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getStoredFanSpeed(),
+      );
+      return;
+    }
+    this.clearSuppressedTurnOnSpeed();
     const current = this.findValue(FC.FAN_SPEED);
     const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
-    await this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+    if (
+      this.restoreFanSpeedValue !== null
+      && hubspeedToPercent(String(raw)) === hubspeedToPercent(String(this.restoreFanSpeedValue))
+    ) {
+      // HomeKit echoing back the speed we're already restoring — don't cancel the restore timer.
+      this.rememberFanSpeed(raw);
+      return;
+    }
+    this.clearFanSpeedRestore();
+    this.rememberFanSpeed(raw);
+    this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  private rememberCurrentFanSpeed(): void {
+    const current = this.findValue(FC.FAN_SPEED);
+    if (current) {
+      this.rememberFanSpeed(current.value);
+    }
+  }
+
+  private rememberFanSpeed(value: DeviceStateValue['value']): void {
+    if (hubspeedToPercent(String(value)) > 0) {
+      this.rememberedFanSpeedValue = value;
+    }
+  }
+
+  private buildRememberedFanSpeedPatch(): Partial<DeviceStateValue> | null {
+    const current = this.findValue(FC.FAN_SPEED);
+    const value = this.rememberedFanSpeedValue ?? current?.value;
+    if (value === undefined || value === null || hubspeedToPercent(String(value)) <= 0) {
+      return null;
+    }
+    return this.buildPatch(FC.FAN_SPEED, value, current?.functionInstance);
+  }
+
+  private scheduleFanSpeedRestore(value: DeviceStateValue['value']): void {
+    this.restoreFanSpeedValue = value;
+    if (this.restoreFanSpeedTimer) clearTimeout(this.restoreFanSpeedTimer);
+    this.restoreFanSpeedTimer = setTimeout(() => {
+      const patch = this.buildRememberedFanSpeedPatch();
+      if (patch) {
+        this.setDeviceValues([patch]);
+      }
+      this.clearFanSpeedRestore();
+    }, 1200);
+  }
+
+  private clearFanSpeedRestore(): void {
+    this.restoreFanSpeedValue = null;
+    if (this.restoreFanSpeedTimer) {
+      clearTimeout(this.restoreFanSpeedTimer);
+      this.restoreFanSpeedTimer = null;
+    }
+  }
+
+  private isRestoringDifferentFanSpeed(value: DeviceStateValue['value']): boolean {
+    return this.restoreFanSpeedValue !== null
+      && hubspeedToPercent(String(value)) !== hubspeedToPercent(String(this.restoreFanSpeedValue));
+  }
+
+  private clearSuppressedTurnOnSpeed(): void {
+    this.suppressTurnOnSpeedPercent = null;
+    if (this.suppressTurnOnSpeedTimer) {
+      clearTimeout(this.suppressTurnOnSpeedTimer);
+      this.suppressTurnOnSpeedTimer = null;
+    }
   }
 
   private getFanDirection(): CharacteristicValue {
@@ -545,7 +849,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
 
   private async setFanDirection(hkDirection: number): Promise<void> {
     const reverse = hkDirection === this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE;
-    await this.setDeviceValues([
+    this.setDeviceValues([
       this.buildPatch(FC.FAN_REVERSE, reverse ? 'reverse' : 'forward', 'fan-reverse'),
     ]);
   }
@@ -576,7 +880,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
   }
 
   private async setMasterPower(on: boolean): Promise<void> {
-    await this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off', 'primary')]);
+    this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off', 'primary')]);
   }
 
   // ── Comfort Breeze companion accessory ───────────────────────────────────────
@@ -603,7 +907,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
   }
 
   private async setComfortBreeze(on: boolean): Promise<void> {
-    await this.setDeviceValues([
+    this.setDeviceValues([
       this.buildPatch(FC.TOGGLE, on ? 'enabled' : 'disabled', 'comfort-breeze'),
     ]);
   }
@@ -616,7 +920,7 @@ export class FanAccessory extends BaseHubspaceAccessory {
   }
 
   private async setLightPower(on: boolean): Promise<void> {
-    await this.setDeviceValues([
+    this.setDeviceValues([
       this.buildPatch(FC.POWER, on ? 'on' : 'off', 'light-power'),
     ]);
   }
@@ -639,7 +943,34 @@ export class FanAccessory extends BaseHubspaceAccessory {
       if (rounded > 0 && !this.getLightPower()) {
         patches.push(this.buildPatch(FC.POWER, 'on', 'light-power'));
       }
-      await this.setDeviceValues(patches);
+      this.setDeviceValues(patches);
+    }, 300);
+  }
+
+  private getLightColorTemp(): CharacteristicValue {
+    const v = this.findValue(FC.COLOR_TEMP);
+    if (!v) return 370;
+    const kelvin = parseKelvin(v.value);
+    if (kelvin === null) return 370;
+    const minMired = kelvinToMired(6500);
+    const maxMired = kelvinToMired(2700);
+    return Math.min(maxMired, Math.max(minMired, kelvinToMired(kelvin)));
+  }
+
+  private lightColorTempTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private async setLightColorTemp(mireds: number): Promise<void> {
+    if (this.lightColorTempTimer) clearTimeout(this.lightColorTempTimer);
+    this.lightColorTempTimer = setTimeout(async () => {
+      const k = miredToKelvin(mireds);
+      const current = this.findValue(FC.COLOR_TEMP);
+      const patches: Partial<DeviceStateValue>[] = [
+        this.buildPatch(FC.COLOR_TEMP, this.colorTempPatchValue(k, current), current?.functionInstance),
+      ];
+      if (!this.getLightPower()) {
+        patches.push(this.buildPatch(FC.POWER, 'on', 'light-power'));
+      }
+      this.setDeviceValues(patches);
     }, 300);
   }
 
@@ -674,6 +1005,10 @@ export class FanAccessory extends BaseHubspaceAccessory {
       if (this.findValue(FC.BRIGHTNESS)) {
         this.lightSvc.updateCharacteristic(
           this.platform.Characteristic.Brightness, this.getLightBrightness());
+      }
+      if (this.findValue(FC.COLOR_TEMP)) {
+        this.lightSvc.updateCharacteristic(
+          this.platform.Characteristic.ColorTemperature, this.getLightColorTemp());
       }
     }
 
@@ -739,7 +1074,7 @@ export class OutletAccessory extends BaseHubspaceAccessory {
   private async setPower(on: boolean): Promise<void> {
     const fc = this.findValue(FC.POWER) ? FC.POWER : FC.TOGGLE;
     const send = this.platform.invertOutletStatus ? !on : on;
-    await this.setDeviceValues([this.buildPatch(fc, send ? 'on' : 'off')]);
+    this.setDeviceValues([this.buildPatch(fc, send ? 'on' : 'off')]);
   }
 
   protected pushCharacteristics(): void {
@@ -802,7 +1137,7 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
   }
 
   private async setPowerForOutlet(instance: string, on: boolean): Promise<void> {
-    await this.setDeviceValues([this.buildPatch(FC.TOGGLE, on ? 'on' : 'off', instance)]);
+    this.setDeviceValues([this.buildPatch(FC.TOGGLE, on ? 'on' : 'off', instance)]);
   }
 
   protected pushCharacteristics(): void {
@@ -815,6 +1150,307 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
     for (const [instance, svc] of this.outletServices) {
       svc.updateCharacteristic(this.platform.Characteristic.On, this.getPowerForOutlet(instance));
       svc.updateCharacteristic(this.platform.Characteristic.OutletInUse, this.getPowerForOutlet(instance));
+    }
+  }
+}
+
+// ─── Portable AC accessory ────────────────────────────────────────────────────
+
+export class PortableAcAccessory extends BaseHubspaceAccessory {
+  declare private svc: Service;
+  private suppressTurnOnSpeedPercent: number | null = null;
+  private suppressTurnOnSpeedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  protected setupServices(): void {
+    this.svc =
+      this.accessory.getService(this.platform.Service.HeaterCooler) ??
+      this.accessory.addService(this.platform.Service.HeaterCooler, this.device.friendlyName);
+
+    this.svc.getCharacteristic(this.platform.Characteristic.Active)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getActive();
+      })
+      .onSet((v) => { void this.setActive(v as number); });
+
+    this.svc.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getCurrentHeaterCoolerState();
+      });
+
+    this.svc.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
+      .setProps({ validValues: [
+        this.platform.Characteristic.TargetHeaterCoolerState.COOL,
+      ] })
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getTargetHeaterCoolerState();
+      })
+      .onSet((v) => { void this.setTargetHeaterCoolerState(v as number); });
+
+    this.svc.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getCurrentTemperature();
+      });
+
+    if (this.findValue(FC.TEMPERATURE, 'cooling-target')) {
+      this.svc.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getCoolingTarget();
+        })
+        .onSet((v) => { void this.setCoolingTarget(v as number); });
+    }
+
+    if (this.findValue(FC.FAN_SPEED)) {
+      this.svc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+        .setProps({ minValue: 33, maxValue: 100, minStep: 33 })
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getAcFanSpeed();
+        })
+        .onSet((v) => { void this.setAcFanSpeed(v as number); });
+    }
+
+    this.svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+    this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+      .onGet(() => this.getStatusFault());
+  }
+
+  // ── Getters ───────────────────────────────────────────────────────────────────
+
+  private getActive(): CharacteristicValue {
+    const v = this.findValue(FC.POWER);
+    const on = v?.value === 'on' || v?.value === true || v?.value === 1;
+    return on
+      ? this.platform.Characteristic.Active.ACTIVE
+      : this.platform.Characteristic.Active.INACTIVE;
+  }
+
+  private getCurrentHeaterCoolerState(): CharacteristicValue {
+    const { CurrentHeaterCoolerState } = this.platform.Characteristic;
+    if (this.getActive() === this.platform.Characteristic.Active.INACTIVE) {
+      return CurrentHeaterCoolerState.INACTIVE;
+    }
+    return CurrentHeaterCoolerState.COOLING;
+  }
+
+  private getTargetHeaterCoolerState(): CharacteristicValue {
+    return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
+  }
+
+  private getCurrentTemperature(): CharacteristicValue {
+    const v = this.findValue(FC.TEMPERATURE, 'current-temp');
+    return v !== undefined ? Number(v.value) : 20;
+  }
+
+  private getCoolingTarget(): CharacteristicValue {
+    const v = this.findValue(FC.TEMPERATURE, 'cooling-target');
+    return v !== undefined ? Number(v.value) : 24;
+  }
+
+  private getAcFanSpeed(): CharacteristicValue {
+    // Report stored speed even when off so HomeKit slider stays at last-used speed.
+    // Prevents the Home app from sending a synthetic high-speed on power-on.
+    return this.getStoredAcFanSpeed();
+  }
+
+  private getStoredAcFanSpeed(): number {
+    const v = this.findValue(FC.FAN_SPEED);
+    return v ? hubspeedToPercent(String(v.value)) : 33;
+  }
+
+  // ── Setters ───────────────────────────────────────────────────────────────────
+
+  private async setActive(hkActive: number): Promise<void> {
+    const on = hkActive === this.platform.Characteristic.Active.ACTIVE;
+    const currentlyActive = this.getActive() === this.platform.Characteristic.Active.ACTIVE;
+    const wasInactive = !currentlyActive;
+    if (on === currentlyActive) {
+      this.clearSuppressedTurnOnSpeed();
+      return;
+    }
+    if (on && wasInactive) {
+      const storedSpeed = this.getStoredAcFanSpeed();
+      if (storedSpeed > 0 && storedSpeed < 99) {
+        this.suppressTurnOnSpeedPercent = 99;
+        if (this.suppressTurnOnSpeedTimer) clearTimeout(this.suppressTurnOnSpeedTimer);
+        this.suppressTurnOnSpeedTimer = setTimeout(() => {
+          this.suppressTurnOnSpeedPercent = null;
+          this.suppressTurnOnSpeedTimer = null;
+        }, 1000);
+      }
+    } else {
+      this.clearSuppressedTurnOnSpeed();
+    }
+    this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
+  }
+
+  private async setTargetHeaterCoolerState(_hkState: number): Promise<void> {
+    this.setDeviceValues([this.buildPatch(FC.MODE, 'cool')]);
+  }
+
+  private coolingTargetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private async setCoolingTarget(celsius: number): Promise<void> {
+    if (this.coolingTargetTimer) clearTimeout(this.coolingTargetTimer);
+    this.coolingTargetTimer = setTimeout(() => {
+      this.setDeviceValues([
+        this.buildPatch(FC.TEMPERATURE, Math.round(celsius), 'cooling-target'),
+      ]);
+    }, 300);
+  }
+
+  private async setAcFanSpeed(percent: number): Promise<void> {
+    const requestedPercent = percent <= 0 ? 33 : percent;
+    if (this.suppressTurnOnSpeedPercent === percent) {
+      this.clearSuppressedTurnOnSpeed();
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getAcFanSpeed(),
+      );
+      return;
+    }
+    this.clearSuppressedTurnOnSpeed();
+    const current = this.findValue(FC.FAN_SPEED);
+    const speed = percentToHubspeed(requestedPercent, String(current?.value ?? 'fan-speed-auto'));
+    if (current?.value === speed) {
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        this.getAcFanSpeed(),
+      );
+      return;
+    }
+    this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, speed)]);
+  }
+
+  private clearSuppressedTurnOnSpeed(): void {
+    this.suppressTurnOnSpeedPercent = null;
+    if (this.suppressTurnOnSpeedTimer) {
+      clearTimeout(this.suppressTurnOnSpeedTimer);
+      this.suppressTurnOnSpeedTimer = null;
+    }
+  }
+
+  // ── Push ──────────────────────────────────────────────────────────────────────
+
+  protected pushCharacteristics(): void {
+    this.svc.updateCharacteristic(
+      this.platform.Characteristic.StatusFault, this.getStatusFault());
+    if (this.offline) {
+      this.svc.updateCharacteristic(this.platform.Characteristic.Active, this.noResponse);
+      return;
+    }
+    this.svc.updateCharacteristic(this.platform.Characteristic.Active, this.getActive());
+    this.svc.updateCharacteristic(
+      this.platform.Characteristic.CurrentHeaterCoolerState, this.getCurrentHeaterCoolerState());
+    this.svc.updateCharacteristic(
+      this.platform.Characteristic.TargetHeaterCoolerState, this.getTargetHeaterCoolerState());
+    this.svc.updateCharacteristic(
+      this.platform.Characteristic.CurrentTemperature, this.getCurrentTemperature());
+    if (this.findValue(FC.TEMPERATURE, 'cooling-target')) {
+      this.svc.updateCharacteristic(
+        this.platform.Characteristic.CoolingThresholdTemperature, this.getCoolingTarget());
+    }
+    if (this.findValue(FC.FAN_SPEED)) {
+      this.svc.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.getAcFanSpeed());
+    }
+  }
+}
+
+// ─── Landscape transformer accessory ─────────────────────────────────────────
+
+export class LandscapeTransformerAccessory extends BaseHubspaceAccessory {
+  declare private masterSvc: Service;
+  declare private zoneSvcs: Map<string, Service>;
+
+  private get zoneInstances(): string[] {
+    const instances: string[] = [];
+    for (const [, v] of this.stateMap) {
+      if (v.functionClass === FC.TOGGLE && /^zone-\d+$/.test(v.functionInstance ?? '')) {
+        instances.push(v.functionInstance!);
+      }
+    }
+    return instances.sort();
+  }
+
+  protected setupServices(): void {
+    this.masterSvc =
+      this.accessory.getService(this.platform.Service.Switch) ??
+      this.accessory.addService(this.platform.Service.Switch, this.device.friendlyName);
+
+    this.masterSvc.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getMasterPower();
+      })
+      .onSet((v) => { void this.setMasterPower(v as boolean); });
+
+    this.masterSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+    this.masterSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
+      .onGet(() => this.getStatusFault());
+
+    this.zoneSvcs = new Map();
+    for (const instance of this.zoneInstances) {
+      const label = instance.replace(/^zone-(\d+)$/, 'Zone $1');
+      const svc =
+        this.accessory.services.find((s: { subtype?: string }) => s.subtype === instance) ??
+        this.accessory.addService(this.platform.Service.Switch, label, instance);
+
+      svc.getCharacteristic(this.platform.Characteristic.On)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getZonePower(instance);
+        })
+        .onSet((v) => { void this.setZonePower(instance, v as boolean); });
+
+      this.zoneSvcs.set(instance, svc);
+    }
+  }
+
+  protected override getStatusFault(): CharacteristicValue {
+    const base = super.getStatusFault();
+    if (base !== this.platform.Characteristic.StatusFault.NO_FAULT) return base;
+    const overload = this.findValue(FC.OVERLOAD_STATE);
+    if (overload !== undefined && overload.value !== 'normal') {
+      return this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+    }
+    return this.platform.Characteristic.StatusFault.NO_FAULT;
+  }
+
+  private getMasterPower(): CharacteristicValue {
+    const v = this.findValue(FC.POWER);
+    return v?.value === 'on' || v?.value === true || v?.value === 1;
+  }
+
+  private async setMasterPower(on: boolean): Promise<void> {
+    this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
+  }
+
+  private getZonePower(instance: string): CharacteristicValue {
+    const v = this.findValue(FC.TOGGLE, instance);
+    return v?.value === 'on' || v?.value === true || v?.value === 1;
+  }
+
+  private async setZonePower(instance: string, on: boolean): Promise<void> {
+    this.setDeviceValues([this.buildPatch(FC.TOGGLE, on ? 'on' : 'off', instance)]);
+  }
+
+  protected pushCharacteristics(): void {
+    this.masterSvc.updateCharacteristic(
+      this.platform.Characteristic.StatusFault, this.getStatusFault());
+    if (this.offline) {
+      this.masterSvc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      for (const [, svc] of this.zoneSvcs) {
+        svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      }
+      return;
+    }
+    this.masterSvc.updateCharacteristic(this.platform.Characteristic.On, this.getMasterPower());
+    for (const [instance, svc] of this.zoneSvcs) {
+      svc.updateCharacteristic(this.platform.Characteristic.On, this.getZonePower(instance));
     }
   }
 }
@@ -848,6 +1484,14 @@ export function createAccessory(
       return new MultiOutletAccessory(platform, pAccessory, device);
     }
     return new OutletAccessory(platform, pAccessory, device);
+  }
+
+  if (cls === 'portable-air-conditioner') {
+    return new PortableAcAccessory(platform, pAccessory, device);
+  }
+
+  if (cls === 'landscape-transformer') {
+    return new LandscapeTransformerAccessory(platform, pAccessory, device);
   }
 
   platform.log.warn(

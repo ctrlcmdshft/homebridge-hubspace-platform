@@ -8,7 +8,7 @@ export interface HubspaceConfig {
   name: string;
   username: string;
   password: string;
-  /** Polling interval in seconds (default 30). */
+  /** Polling interval in seconds (default 300 with Conclave, 30 without). */
   pollingInterval?: number;
   /** Override path for the token cache JSON file. */
   tokenCachePath?: string;
@@ -26,6 +26,8 @@ export interface HubspaceConfig {
   disableConclave?: boolean;
   /** Invert outlet/plug on-state (for devices that report state backwards; default false). */
   invertOutletStatus?: boolean;
+  /** Comma-separated friendly names of devices to skip during discovery (e.g. "Ceiling Light, Bulb"). */
+  excludedDevices?: string;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -61,6 +63,22 @@ export interface DeviceStateValue {
   lastUpdateTime?: number;
 }
 
+export interface SemanticValueDefinition {
+  name?: string;
+  range?: {
+    min?: number | null;
+    max?: number | null;
+    step?: number | null;
+  };
+}
+
+export interface SemanticFunctionDefinition {
+  functionClass?: string;
+  functionInstance?: string;
+  type?: string;
+  values?: SemanticValueDefinition[];
+}
+
 /** Raw shape returned by semantics2 metadevices API. */
 export interface HubspaceMetadeviceRaw {
   id: string;
@@ -76,6 +94,7 @@ export interface HubspaceMetadeviceRaw {
       model?: string;
       defaultName?: string;
     };
+    functions?: SemanticFunctionDefinition[];
   };
   state?: {
     metadeviceId: string;
@@ -96,6 +115,8 @@ export interface HubspaceDevice {
   model?: string;
   /** Current state values for this device. */
   values: DeviceStateValue[];
+  /** Discrete color-temperature category names advertised by semantics2, keyed by functionInstance. */
+  colorTempCategories?: Record<string, Array<string | number>>;
 }
 
 // ─── Accessory context (persisted in PlatformAccessory.context) ───────────────
@@ -119,6 +140,8 @@ export const SUPPORTED_DEVICE_CLASSES = new Set([
   'switch',
   'plug',
   'power-outlet',
+  'portable-air-conditioner',
+  'landscape-transformer',
 ]);
 
 // ─── Function class constants (Hubspace / Afero capability names) ─────────────
@@ -132,6 +155,9 @@ export const FC = {
   FAN_SPEED: 'fan-speed',
   FAN_REVERSE: 'fan-reverse',
   AVAILABLE: 'available',
+  MODE: 'mode',
+  TEMPERATURE: 'temperature',
+  OVERLOAD_STATE: 'overload-state',
 } as const;
 
 export type FunctionClass = (typeof FC)[keyof typeof FC];

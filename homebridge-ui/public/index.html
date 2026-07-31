@@ -184,30 +184,69 @@ homebridge.addEventListener('ready', async () => {
     });
   }
   const updateOtpBtn = () => {
-    const full = otpIds.every(id => $(id).value.length === 1);
-    $('btn-otp').disabled = !full;
+    $('btn-otp').disabled = !otpIds.every(id => $(id).value.length === 1);
   };
   const getOtpCode = () => otpIds.map(id => $(id).value).join('');
   const clearOtp = () => { otpIds.forEach(id => $(id).value = ''); updateOtpBtn(); };
 
-  // ── pre-fill credentials from saved config ───────────────────────────────────
-  try {
-    const configs = await homebridge.getPluginConfig();
-    if (configs[0]?.username) $('inp-username').value = configs[0].username;
-    if (configs[0]?.password) $('inp-password').value = configs[0].password;
-  } catch { /* ignore */ }
-
-  // ── load status ───────────────────────────────────────────────────────────────
-  let status;
-  try {
-    status = await homebridge.request('/auth-status');
-  } catch {
-    status = { cached: false, valid: false, username: null };
+  // ── withTimeout: races a promise against a resolving (not rejecting) timer ───
+  // Returns the promise result, or undefined if the timer wins. Never throws.
+  function withTimeout(promise, ms) {
+    return Promise.race([
+      promise.catch(() => undefined),
+      new Promise(res => setTimeout(res, ms)),
+    ]);
   }
+
+  // ── waitForPush: wait for a server push event, reject on timeout ─────────────
+  function waitForPush(event, ms) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), ms);
+      homebridge.addEventListener(event, e => { clearTimeout(t); resolve(e.data); }, { once: true });
+    });
+  }
+
+  async function requestWithPushFallback(route, body, ms) {
+    const pushP = waitForPush(route, ms).catch(() => undefined);
+    const requestP = homebridge.request(route, body).catch(() => undefined);
+    return withTimeout(Promise.race([requestP, pushP]), ms);
+  }
+
+  // ── saveConfig: save username+password to plugin config ──────────────────────
+  async function saveConfig(username, password) {
+    const configs = await homebridge.getPluginConfig();
+    const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
+    await homebridge.updatePluginConfig([{ ...existing, username, password }]);
+    await homebridge.savePluginConfig();
+  }
+
+  // ── pre-fill credentials + load status ────────────────────────────────────────
+  // Plain request/response (not push) for /auth-status: homebridge-config-ui-x
+  // reuses the same long-lived UI server process across page loads, so a
+  // proactive push sent once at process construction is only ever seen by the
+  // very first page load — every later visit waits the full timeout for a push
+  // that will never come. A request dispatches fresh every time regardless of
+  // process age, so it's the correct tool for this simple, fast local read.
+  let savedConfig = {};
+  const [cfgs, statusResult] = await Promise.all([
+    withTimeout(homebridge.getPluginConfig(), 4000),
+    withTimeout(homebridge.request('/auth-status'), 5000),
+  ]);
+  if (cfgs) {
+    savedConfig = cfgs[0] ?? {};
+    if (savedConfig.username) $('inp-username').value = savedConfig.username;
+    if (savedConfig.password) $('inp-password').value = savedConfig.password;
+  }
+
+  const status = statusResult ?? {
+    cached: !!(savedConfig.username && savedConfig.password),
+    valid: !!(savedConfig.username && savedConfig.password),
+    username: savedConfig.username ?? null,
+  };
 
   $('status-dot').className = 'dot ' + (status.valid ? 'dot-green' : 'dot-red');
   $('status-label').textContent = status.valid ? 'Connected' : (status.cached ? 'Tokens expired' : 'Not authenticated');
-  $('status-sub').textContent = status.valid ? (status.username ? `Signed in as ${status.username}` : '') : '';
+  $('status-sub').textContent = status.valid && status.username ? `Signed in as ${status.username}` : '';
 
   if (status.valid) {
     $('connected-user').textContent = status.username ?? 'Connected';
@@ -219,39 +258,52 @@ homebridge.addEventListener('ready', async () => {
   // ── start login ───────────────────────────────────────────────────────────────
   $('btn-start').addEventListener('click', async () => {
     clearAlert('creds-alert');
-
     const username = $('inp-username').value.trim();
     const password = $('inp-password').value;
-
     if (!username || !password) {
       setAlert('creds-alert', 'Enter your Hubspace username and password to continue.');
       return;
     }
 
     setLoading('btn-start', 'btn-start-spinner', true);
-
+    let showing2fa = false;
     try {
-      const result = await homebridge.request('/start-login', { username, password });
-      if (result.success) {
-        try {
-          const configs = await homebridge.getPluginConfig();
-          const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
-          await homebridge.updatePluginConfig([{ ...existing, username, password }]);
-        } catch { /* non-fatal */ }
-        hide('step-creds');
-        show('step-success');
-        $('status-dot').className = 'dot dot-green';
-        $('status-label').textContent = 'Connected';
-        $('status-sub').textContent = `Signed in as ${username}`;
-      } else if (result.needed2fa) {
+      // Attempt PKCE. Prefer the direct request response; keep push as a
+      // compatibility fallback for older Homebridge UI IPC behavior.
+      let pkceResult;
+      pkceResult = await requestWithPushFallback('/start-login', { username, password }, 20000);
+
+      if (pkceResult?.needed2fa) {
+        showing2fa = true;
         hide('step-creds');
         show('step-otp');
         setTimeout(() => $('o1').focus(), 50);
+        return;
       }
-    } catch (err) {
-      setAlert('creds-alert', err?.message ?? err ?? 'Login failed. Please try again.');
+      if (!pkceResult) {
+        setAlert('creds-alert', 'Server did not respond — please restart Homebridge and try again.');
+        return;
+      }
+      if (pkceResult?.success === false) {
+        setAlert('creds-alert', pkceResult.error ?? 'Login failed. Please try again.');
+        return;
+      }
+
+      // PKCE succeeded — save credentials with a hard timeout
+      await withTimeout(saveConfig(username, password), 5000);
+
+      $('status-dot').className = 'dot dot-green';
+      $('status-label').textContent = 'Connected';
+      $('status-sub').textContent = `Signed in as ${username}`;
+      hide('step-creds');
+      show('step-success');
+      setTimeout(() => {
+        hide('setup-card');
+        $('connected-user').textContent = username;
+        show('connected-card');
+      }, 2000);
     } finally {
-      setLoading('btn-start', 'btn-start-spinner', false);
+      if (!showing2fa) setLoading('btn-start', 'btn-start-spinner', false);
     }
   });
 
@@ -260,25 +312,36 @@ homebridge.addEventListener('ready', async () => {
     clearAlert('otp-alert');
     setLoading('btn-otp', 'btn-otp-spinner', true);
     try {
-      await homebridge.request('/submit-otp', { emailCode: getOtpCode() });
-      try {
-        const configs = await homebridge.getPluginConfig();
-        const existing = configs[0] ?? { platform: 'HubspacePlatform', name: 'Hubspace Platform' };
-        const username = $('inp-username').value.trim();
-        const password = $('inp-password').value;
-        if (username && password) {
-          await homebridge.updatePluginConfig([{ ...existing, username, password }]);
-        }
-      } catch { /* non-fatal */ }
-      hide('step-otp');
-      show('step-success');
+      let otpResult;
+      otpResult = await requestWithPushFallback('/submit-otp', { emailCode: getOtpCode() }, 20000);
+      if (!otpResult) {
+        setAlert('otp-alert', 'Server did not respond — please restart Homebridge and try again.');
+        clearOtp();
+        setTimeout(() => $('o1').focus(), 50);
+        return;
+      }
+
+      if (!otpResult.success) {
+        setAlert('otp-alert', otpResult.error ?? 'Invalid code. Please try again.');
+        clearOtp();
+        setTimeout(() => $('o1').focus(), 50);
+        return;
+      }
+
+      const username = $('inp-username').value.trim();
+      const password = $('inp-password').value;
+      await withTimeout(saveConfig(username, password), 5000);
+
       $('status-dot').className = 'dot dot-green';
       $('status-label').textContent = 'Connected';
-      $('status-sub').textContent = '';
-    } catch (err) {
-      setAlert('otp-alert', err?.message ?? err ?? 'Invalid code. Please try again.');
-      clearOtp();
-      setTimeout(() => $('o1').focus(), 50);
+      $('status-sub').textContent = username ? `Signed in as ${username}` : '';
+      hide('step-otp');
+      show('step-success');
+      setTimeout(() => {
+        hide('setup-card');
+        $('connected-user').textContent = username || 'Connected';
+        show('connected-card');
+      }, 2000);
     } finally {
       setLoading('btn-otp', 'btn-otp-spinner', false);
     }

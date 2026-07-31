@@ -2,9 +2,49 @@
 
 ## [Unreleased]
 
-### Internal
+---
 
-- **Removed `src/dump-devices.ts`** — the old TypeScript dump script compiled to `dist/dump-devices.js` and shipped unnecessarily in the npm tarball; it also lacked 2FA support; `npm run dump` now runs `scripts/dump-devices.js` directly (the 2FA-capable standalone version) without requiring a build step first
+## [2.1.0] - 2026-07-31
+
+This release adds support for portable/window air conditioners and Hampton Bay landscape transformers, hardens the Homebridge UI login flow, and rolls in field-tested fixes for fan speed, portable AC fan control, and Hubspace color-temperature formats.
+
+### Added
+
+- **Portable/window air conditioner support** — Hubspace `portable-air-conditioner` devices now appear as HomeKit **HeaterCooler** accessories with power, cooling target temperature, current temperature, and fan speed controls. Tested against Vissani/Hubspace units including VAP05R1AWT and VAW06R1AWTS-style fan-speed formats.
+- **Landscape transformer support** — Hampton Bay smart landscape transformers now expose a master power switch plus one HomeKit Switch per detected zone, with overload faults surfaced through `StatusFault`.
+- **Excluded devices setting** — new `excludedDevices` config option lets users skip selected Hubspace devices by friendly name. Matching is case-insensitive, accepts comma-separated names, and logs a warning when an entry does not match any discovered device.
+
+### Fixed
+
+- **Homebridge UI login reliability** — the custom login/2FA screen now uses explicit timeouts and server push acknowledgements for long login actions, preventing indefinite spinners and false "Connected" states after failed or dropped login messages.
+- **Repeated login request races** — overlapping login or OTP submissions are now rejected while a login is already in progress, preventing stale retries from corrupting the active 2FA session.
+- **Plugin UI status check delay** — `/auth-status` now uses normal request/response handling, so reopening plugin settings no longer waits several seconds for a one-time push event that may never arrive.
+- **Fan tile speed flash on power-on** — fans now report their stored speed even while inactive, preventing the Home app from briefly forcing the speed slider to 100% when turning a fan on.
+- **Portable AC fan speed formats** — portable AC models that report `fan-speed-N-VVV` values, such as `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`, now read and write the correct speed format.
+- **Portable AC fan slider behavior** — the fan slider keeps the last speed while off, ignores redundant speed writes during power-on, and snaps `RotationSpeed=0` back to the lowest fan speed instead of turning the AC off.
+- **Concurrent state writes** — accessory writes queued in the same event-loop tick are coalesced into one Hubspace PUT request, avoiding 400 errors when HomeKit sends power and speed changes together.
+- **Color-temperature parsing** — Hubspace values such as `4000K` are now parsed correctly and no longer produce Homebridge `NaN` warnings.
+- **Color-temperature writes** — Kelvin writes preserve the device's current value shape, and category-only color-temperature devices snap to the nearest supported semantic value such as `2700K`, `3000K`, `4000K`, `5000K`, or `6500K`.
+- **Invalid Kelvin guard** — invalid or zero Kelvin values now fall back to a valid HomeKit color-temperature value instead of producing `NaN` or `Infinity`.
+- **Write failure diagnostics** — failed SET STATE logs now include the sent function/value payload and API response body so device-specific 400 errors are easier to diagnose.
+- **Poll failure logs** — repeated per-device poll failures are suppressed after the third failure until the device recovers, and failure logs now include the friendly device name and ID.
+
+### Changed
+
+- **README coverage refresh** — supported-device, requirements, configuration, Conclave, troubleshooting, and device-support instructions now describe portable/window ACs, landscape transformers, fault exposure, and the current polling defaults.
+- **Unsupported-device debug logs stay redacted** — unsupported device diagnostics now share the same formatted state logger used by verbose polling, including redaction for Wi-Fi, BLE MAC, and geo fields.
+- **Standalone dump script packaging** — `npm run dump` now runs `scripts/dump-devices.js` directly instead of building and shipping the old TypeScript dump entrypoint. The standalone script also has a visible password fallback for Windows/non-TTY prompts and now reads `HUBSPACE_EMAIL` / `HUBSPACE_PASS` environment variables.
+
+### Removed
+
+- **Removed `src/dump-devices.ts`** — the development-only TypeScript dump script is no longer compiled into `dist` or shipped in the npm package.
+- **Removed unused `@homebridge/plugin-ui-utils` dependency** — the custom UI server uses its own minimal IPC wrapper.
+
+### Thanks
+
+- Thanks to @copenlc for the Hampton Bay landscape transformer capability dump and follow-up testing on issue #9.
+- Thanks to @jvmo for portable AC testing on issue #10, including fan-speed PUT/GET logs for `fan-speed-3-033`, `fan-speed-3-066`, and `fan-speed-3-100`.
+- Thanks to @justinglock40 for the color-temperature report on issue #11 showing `color-temperature[undefined]=4000K` and the failed `"4505"` write.
 
 ---
 
