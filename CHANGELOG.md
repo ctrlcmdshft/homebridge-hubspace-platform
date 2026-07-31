@@ -4,9 +4,9 @@
 
 ---
 
-## [2.1.0] - 2026-07-31
+## [2.1.2] - 2026-07-31
 
-This release adds support for portable/window air conditioners and Hampton Bay landscape transformers, hardens the Homebridge UI login flow, and rolls in field-tested fixes for fan speed, portable AC fan control, and Hubspace color-temperature formats.
+This release adds support for portable/window air conditioners and Hampton Bay landscape transformers, hardens the Homebridge UI login flow, and rolls in field-tested fixes for fan speed, portable AC fan control, and Hubspace color-temperature formats. Version 2.1.2 corrects the release metadata so Homebridge can match the changelog to the installed package version.
 
 ### Added
 
@@ -16,6 +16,7 @@ This release adds support for portable/window air conditioners and Hampton Bay l
 
 ### Fixed
 
+- **Release metadata** — the packaged changelog now has a `2.1.2` section that matches the npm package version, allowing Homebridge to show the changelog for this release.
 - **Homebridge UI login reliability** — the custom login/2FA screen now uses explicit timeouts and server push acknowledgements for long login actions, preventing indefinite spinners and false "Connected" states after failed or dropped login messages.
 - **Repeated login request races** — overlapping login or OTP submissions are now rejected while a login is already in progress, preventing stale retries from corrupting the active 2FA session.
 - **Plugin UI status check delay** — `/auth-status` now uses normal request/response handling, so reopening plugin settings no longer waits several seconds for a one-time push event that may never arrive.
