@@ -1,7 +1,7 @@
 {
   "name": "homebridge-hubspace-platform",
   "displayName": "Homebridge Hubspace Platform",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, and switches.",
   "license": "MIT",
   "author": "ctrlcmdshft",
@@ -13,6 +13,10 @@
   "bugs": {
     "url": "https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues"
   },
+  "funding": {
+    "type": "paypal",
+    "url": "https://paypal.me/cknudsen"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -22,9 +26,10 @@
     "watch": "tsc --watch",
     "lint": "eslint src/ --ext .ts",
     "lint:fix": "eslint src/ --ext .ts --fix",
+    "check:ui": "node --check homebridge-ui/server.js",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "prepublishOnly": "npm run lint && npm run build",
+    "prepublishOnly": "npm run lint && npm run check:ui && npm run build",
     "clean": "rm -rf dist/",
     "dump": "node scripts/dump-devices.js"
   },
@@ -56,7 +61,7 @@
     "homebridge": "^2.0.2",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.9",
-    "typescript": "^5.5.2"
+    "typescript": "5.5.4"
   },
   "socket": {
     "ignore": {
@@ -82,5 +87,9 @@
     "icon": "https://raw.githubusercontent.com/ctrlcmdshft/homebridge-hubspace-platform/main/homebridge.png",
     "configSchema": "config.schema.json",
     "changelog": "CHANGELOG.md"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "unrs-resolver@1.11.1": true
   }
 }

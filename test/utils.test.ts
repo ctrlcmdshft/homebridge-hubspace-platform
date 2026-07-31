@@ -5,6 +5,9 @@ import {
   rgbToHex,
   kelvinToMired,
   miredToKelvin,
+  parseKelvin,
+  formatKelvinForHubspace,
+  formatStateValueForLog,
   hubspeedToPercent,
   percentToHubspeed,
 } from '../src/utils';
@@ -148,6 +151,57 @@ describe('hex ↔ RGB round-trip', () => {
   });
 });
 
+describe('formatStateValueForLog', () => {
+  it('redacts location, BLE MAC, and Wi-Fi identifiers', () => {
+    expect(formatStateValueForLog({
+      functionClass: 'geo-coordinates',
+      functionInstance: 'system-device-location',
+      value: { 'geo-coordinates': { latitude: '39.1', longitude: '-77.2' } },
+    })).toBe('geo-coordinates[system-device-location]=<redacted>');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-ssid',
+      functionInstance: undefined,
+      value: 'My Network',
+    })).toBe('wifi-ssid[undefined]=<redacted>');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-mac-address',
+      functionInstance: undefined,
+      value: 'aabbccddeeff',
+    })).toBe('wifi-mac-address[undefined]=<redacted>');
+    expect(formatStateValueForLog({
+      functionClass: 'ble-mac-address',
+      functionInstance: undefined,
+      value: 'aabbccddeeff',
+    })).toBe('ble-mac-address[undefined]=<redacted>');
+  });
+
+  it('keeps non-private state values visible', () => {
+    expect(formatStateValueForLog({
+      functionClass: 'power',
+      functionInstance: 'light-power',
+      value: 'on',
+    })).toBe('power[light-power]=on');
+  });
+
+  it('keeps Wi-Fi health fields visible for diagnostics', () => {
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-rssi',
+      functionInstance: undefined,
+      value: -64,
+    })).toBe('wifi-rssi[undefined]=-64');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-steady-state',
+      functionInstance: undefined,
+      value: 'connected',
+    })).toBe('wifi-steady-state[undefined]=connected');
+    expect(formatStateValueForLog({
+      functionClass: 'wifi-setup-state',
+      functionInstance: undefined,
+      value: 'connected',
+    })).toBe('wifi-setup-state[undefined]=connected');
+  });
+});
+
 // ─── Color temperature ────────────────────────────────────────────────────────
 
 describe('kelvinToMired', () => {
@@ -159,13 +213,22 @@ describe('kelvinToMired', () => {
     expect(kelvinToMired(6500)).toBe(154);
   });
 
-  it('clamps to minimum 140 for very high kelvin', () => {
-    // 1_000_000 / 10000 = 100, which is below the 140 floor
-    expect(kelvinToMired(10000)).toBe(140);
+  it('clamps to minimum 154 for very high kelvin', () => {
+    // 1_000_000 / 10000 = 100, which is below the 154 floor
+    expect(kelvinToMired(10000)).toBe(154);
   });
 
   it('clamps high values to 500', () => {
     expect(kelvinToMired(1000)).toBe(500);
+  });
+
+  it('falls back to 154 for NaN input', () => {
+    expect(kelvinToMired(NaN)).toBe(154);
+  });
+
+  it('falls back to 154 for zero or negative input', () => {
+    expect(kelvinToMired(0)).toBe(154);
+    expect(kelvinToMired(-100)).toBe(154);
   });
 });
 
@@ -182,6 +245,28 @@ describe('miredToKelvin', () => {
     const k = 3000;
     const mireds = kelvinToMired(k);
     expect(miredToKelvin(mireds)).toBeCloseTo(k, -2);
+  });
+});
+
+describe('parseKelvin', () => {
+  it('parses numeric, numeric-string, and K-suffixed values', () => {
+    expect(parseKelvin(4000)).toBe(4000);
+    expect(parseKelvin('4000')).toBe(4000);
+    expect(parseKelvin('4000K')).toBe(4000);
+    expect(parseKelvin('4000 k')).toBe(4000);
+  });
+
+  it('returns null for non-Kelvin values', () => {
+    expect(parseKelvin('warm-white')).toBeNull();
+    expect(parseKelvin(undefined)).toBeNull();
+  });
+});
+
+describe('formatKelvinForHubspace', () => {
+  it('preserves the current Hubspace color-temperature value shape', () => {
+    expect(formatKelvinForHubspace(4505, 4000)).toBe(4505);
+    expect(formatKelvinForHubspace(4505, '4000')).toBe('4505');
+    expect(formatKelvinForHubspace(4505, '4000K')).toBe('4505K');
   });
 });
 
@@ -229,6 +314,18 @@ describe('hubspeedToPercent', () => {
     expect(hubspeedToPercent('fan-speed-6-083')).toBe(83);
     expect(hubspeedToPercent('fan-speed-6-100')).toBe(100);
     expect(hubspeedToPercent('FAN-SPEED-6-016')).toBe(16);
+  });
+
+  it('converts a portable AC N-speed value (fan-speed-3-100)', () => {
+    // Regression: this exact value was previously falling through to the
+    // fan-speed-auto/low/high switch's default case and reading as 33%.
+    expect(hubspeedToPercent('fan-speed-3-100')).toBe(100);
+  });
+
+  it('converts portable AC 3-speed semantic values', () => {
+    expect(hubspeedToPercent('fan-speed-auto')).toBe(33);
+    expect(hubspeedToPercent('fan-speed-low')).toBe(66);
+    expect(hubspeedToPercent('fan-speed-high')).toBe(99);
   });
 });
 
@@ -302,11 +399,29 @@ describe('percentToHubspeed (N-speed numeric format)', () => {
   });
 
   it('uses N from the current value regardless of speed count', () => {
-    // 3-speed: valid steps are 0, 33, 66, 100 (floor(i*100/3))
+    // AC-style 3-speed values use operating speeds only; power handles off.
+    expect(percentToHubspeed(0,   'fan-speed-3-033')).toBe('fan-speed-3-033');
     expect(percentToHubspeed(33,  'fan-speed-3-033')).toBe('fan-speed-3-033');
     expect(percentToHubspeed(50,  'fan-speed-3-033')).toBe('fan-speed-3-066'); // |50-33|=17 vs |50-66|=16 → 66
     expect(percentToHubspeed(75,  'fan-speed-3-033')).toBe('fan-speed-3-066');
     expect(percentToHubspeed(100, 'fan-speed-3-033')).toBe('fan-speed-3-100');
+  });
+
+  it('does not rewrite a Boys-AC-style value into the fixed 4-step format', () => {
+    // Regression: this value starts with "fan-speed-" so it must be caught by
+    // the N-speed branch, not fall into the legacy fixed-step branch below it.
+    expect(percentToHubspeed(0, 'fan-speed-3-100')).toBe('fan-speed-3-033');
+  });
+});
+
+describe('percentToHubspeed (portable AC 3-speed semantic format)', () => {
+  it('round-trips fan-speed-auto/low/high without being rewritten into the numeric format', () => {
+    expect(percentToHubspeed(0,   'fan-speed-low')).toBe('fan-speed-auto');
+    expect(percentToHubspeed(33,  'fan-speed-low')).toBe('fan-speed-auto');
+    expect(percentToHubspeed(50,  'fan-speed-low')).toBe('fan-speed-low');
+    expect(percentToHubspeed(66,  'fan-speed-low')).toBe('fan-speed-low');
+    expect(percentToHubspeed(99,  'fan-speed-low')).toBe('fan-speed-high');
+    expect(percentToHubspeed(100, 'fan-speed-auto')).toBe('fan-speed-high');
   });
 });
 

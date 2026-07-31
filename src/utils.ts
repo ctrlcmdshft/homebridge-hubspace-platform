@@ -1,4 +1,5 @@
 import type { Logger } from 'homebridge';
+import type { DeviceStateValue } from './types';
 
 /** Wraps a Homebridge Logger and prepends [prefix] to info/warn/error messages. */
 export function createLogger(base: Logger, prefix: string): Logger {
@@ -8,6 +9,24 @@ export function createLogger(base: Logger, prefix: string): Logger {
   wrapped.warn  = (msg: string, ...a: unknown[]) => base.warn(`${tag} ${msg}`, ...a);
   wrapped.error = (msg: string, ...a: unknown[]) => base.error(`${tag} ${msg}`, ...a);
   return wrapped;
+}
+
+const PRIVATE_STATE_FIELDS = new Set([
+  'geo-coordinates',
+  'wifi-ssid',
+  'wifi-mac-address',
+  'ble-mac-address',
+]);
+
+export function formatStateValueForLog(v: DeviceStateValue): string {
+  const instance = v.functionInstance ?? 'undefined';
+  const isPrivate = PRIVATE_STATE_FIELDS.has(v.functionClass);
+  const value = isPrivate
+    ? '<redacted>'
+    : typeof v.value === 'object'
+      ? JSON.stringify(v.value)
+      : String(v.value);
+  return `${v.functionClass}[${instance}]=${value}`;
 }
 
 /** HSV → RGB. h: 0–360, s: 0–100, v: 0–100. Returns [r, g, b] each 0–255. */
@@ -85,9 +104,26 @@ export function rgbToHex(r: number, g: number, b: number): string {
     .join('');
 }
 
-/** Kelvin → HomeKit mireds (clamped 140–500). */
+/** Kelvin → HomeKit mireds (clamped to HomeKit's common 6500K–2000K range). */
 export function kelvinToMired(k: number): number {
-  return Math.min(500, Math.max(140, Math.round(1_000_000 / k)));
+  return isNaN(k) || k <= 0 ? 154 : Math.min(500, Math.max(154, Math.round(1_000_000 / k)));
+}
+
+/** Parse Hubspace color-temperature values such as 4000, "4000", or "4000K". */
+export function parseKelvin(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*k?$/i);
+  if (!match) return null;
+  const kelvin = Number(match[1]);
+  return Number.isFinite(kelvin) ? kelvin : null;
+}
+
+/** Format a Kelvin write to match the device's current Hubspace value shape. */
+export function formatKelvinForHubspace(kelvin: number, currentValue: unknown): string | number {
+  if (typeof currentValue === 'number') return kelvin;
+  if (typeof currentValue === 'string' && /k\s*$/i.test(currentValue.trim())) return `${kelvin}K`;
+  return kelvin.toString();
 }
 
 /** HomeKit mireds → Kelvin. */
@@ -104,6 +140,10 @@ const SEMANTIC_SPEED_TO_PERCENT: Record<string, number> = {
   'fan-speed-050': 50,
   'fan-speed-075': 75,
   'fan-speed-100': 100,
+  // Portable AC 3-speed semantic values (matches percentToHubspeed's dedicated branch).
+  'fan-speed-auto': 33,
+  'fan-speed-low': 66,
+  'fan-speed-high': 99,
   // Legacy named-speed fallbacks for older device profiles.
   'low': 25,
   'medium-low': 40,
@@ -138,11 +178,26 @@ export function hubspeedToPercent(value: string): number {
 export function percentToHubspeed(percent: number, currentValue: string): string {
   const lower = currentValue.toLowerCase();
 
+  // Portable AC 3-speed semantic format (checked before the generic
+  // "starts with fan-speed-" numeric branch below, which would otherwise
+  // wrongly rewrite these into the fixed 4-step numeric format).
+  if (lower === 'fan-speed-auto' || lower === 'fan-speed-low' || lower === 'fan-speed-high') {
+    if (percent <= 33) return 'fan-speed-auto';
+    if (percent <= 66) return 'fan-speed-low';
+    return 'fan-speed-high';
+  }
+
   // N-speed numeric format: fan-speed-6-016, fan-speed-4-025, etc.
   // The device self-describes its speed count; we snap to the nearest valid step.
   const nSpeed = parseNSpeedValue(lower);
   if (nSpeed) {
     const { numSpeeds } = nSpeed;
+    if (numSpeeds === 3) {
+      const steps = [33, 66, 100];
+      const v = steps.reduce((best, step) =>
+        Math.abs(step - percent) < Math.abs(best - percent) ? step : best);
+      return `fan-speed-3-${v.toString().padStart(3, '0')}`;
+    }
     let bestI = 0, bestDist = Infinity;
     for (let i = 0; i <= numSpeeds; i++) {
       const dist = Math.abs(Math.floor(i * 100 / numSpeeds) - percent);

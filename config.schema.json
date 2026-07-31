@@ -32,7 +32,7 @@
         "default": 300,
         "minimum": 10,
         "maximum": 600,
-        "description": "How often to poll device state as a fallback (10–600 s). When Conclave push is active (the default), real-time updates arrive instantly and polling is rarely needed — leave at 300 s unless Conclave is disabled."
+        "description": "How often to poll device state as a fallback (10–600 s). When omitted, the plugin uses 300 s with Conclave enabled or 30 s when Conclave is disabled. Set a lower value if a device does not reliably emit push events."
       },
       "tokenCachePath": {
         "title": "Token Cache Path (advanced)",
@@ -80,6 +80,12 @@
         "type": "boolean",
         "default": false,
         "description": "Disable the real-time Conclave push connection and fall back to polling only. Use this if you experience persistent connection issues."
+      },
+      "excludedDevices": {
+        "title": "Excluded Devices",
+        "type": "string",
+        "default": "",
+        "description": "Comma-separated friendly names of devices to skip during discovery (e.g. \"Bulb, Outdoor plug, Tape light\"). Useful when Hubspace exposes sub-devices you do not want in HomeKit."
       }
     },
     "required": ["username", "password"],
@@ -103,7 +109,13 @@
     {
       "type": "fieldset",
       "title": "Device Options",
-      "items": ["exposeComfortBreeze", "exposeMasterPowerSwitch", "exposeStatusFault", "invertOutletStatus"]
+      "items": [
+        "exposeComfortBreeze",
+        "exposeMasterPowerSwitch",
+        "exposeStatusFault",
+        "invertOutletStatus",
+        "excludedDevices"
+      ]
     },
     {
       "type": "fieldset",
