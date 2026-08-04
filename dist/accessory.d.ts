@@ -151,6 +151,19 @@ export declare class LandscapeTransformerAccessory extends BaseHubspaceAccessory
     private setZonePower;
     protected pushCharacteristics(): void;
 }
+export declare class DoorLockAccessory extends BaseHubspaceAccessory {
+    private lockSvc;
+    private batterySvc;
+    protected setupServices(): void;
+    private getLockCurrentState;
+    private getLockTargetState;
+    private setLockTargetState;
+    private isLockedValue;
+    private isUnlockedValue;
+    private getBatteryLevel;
+    private getStatusLowBattery;
+    protected pushCharacteristics(): void;
+}
 export declare function createAccessory(platform: HubspacePlatform, pAccessory: PlatformAccessory, device: HubspaceDevice): BaseHubspaceAccessory | null;
 export type { HubspaceAccessoryContext };
 //# sourceMappingURL=accessory.d.ts.map

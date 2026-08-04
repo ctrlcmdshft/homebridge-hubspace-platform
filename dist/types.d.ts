@@ -109,6 +109,8 @@ export declare const FC: {
     readonly MODE: "mode";
     readonly TEMPERATURE: "temperature";
     readonly OVERLOAD_STATE: "overload-state";
+    readonly LOCK_CONTROL: "lock-control";
+    readonly BATTERY_LEVEL: "battery-level";
 };
 export type FunctionClass = (typeof FC)[keyof typeof FC];
 //# sourceMappingURL=types.d.ts.map

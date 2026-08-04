@@ -142,6 +142,7 @@ export const SUPPORTED_DEVICE_CLASSES = new Set([
   'power-outlet',
   'portable-air-conditioner',
   'landscape-transformer',
+  'door-lock',
 ]);
 
 // ─── Function class constants (Hubspace / Afero capability names) ─────────────
@@ -158,6 +159,8 @@ export const FC = {
   MODE: 'mode',
   TEMPERATURE: 'temperature',
   OVERLOAD_STATE: 'overload-state',
+  LOCK_CONTROL: 'lock-control',
+  BATTERY_LEVEL: 'battery-level',
 } as const;
 
 export type FunctionClass = (typeof FC)[keyof typeof FC];

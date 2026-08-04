@@ -19,7 +19,7 @@
 
 # Homebridge Hubspace Platform
 
-Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, switches, portable/window air conditioners, and landscape transformers from the Home app or with Siri.
+Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, switches, portable/window air conditioners, landscape transformers, and door locks from the Home app or with Siri.
 
 > **Disclaimer:** This is an unofficial, community-driven plugin. [See disclaimer below.](#disclaimer)
 
@@ -45,6 +45,7 @@ Support is capability-based, so nearby Hubspace models often work even if they a
 | Switches | Hubspace Smart Switch; `switch` | Switch on/off | Implemented, untested |
 | Portable/window ACs | Vissani VAP05R1AWT, VAW06R1AWTS-style models; `portable-air-conditioner` | HeaterCooler service with power, cool-only target mode, cooling setpoint, current temperature, fan speed, StatusFault | Tested with hardware and community logs |
 | Landscape transformers | Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI); `landscape-transformer` | Master switch, one switch per detected zone, overload StatusFault | Community tested |
+| Door locks | Defiant Hubspace door locks; `door-lock` | Lock/unlock, current lock state, battery level, StatusFault | Implemented from community logs, untested |
 
 Device-dependent controls only appear when the Hubspace API reports the matching capability:
 

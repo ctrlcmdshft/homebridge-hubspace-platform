@@ -1455,6 +1455,119 @@ export class LandscapeTransformerAccessory extends BaseHubspaceAccessory {
   }
 }
 
+// ─── Door lock accessory ─────────────────────────────────────────────────────
+
+export class DoorLockAccessory extends BaseHubspaceAccessory {
+  declare private lockSvc: Service;
+  declare private batterySvc: Service | null;
+
+  protected setupServices(): void {
+    this.lockSvc =
+      this.accessory.getService(this.platform.Service.LockMechanism) ??
+      this.accessory.addService(this.platform.Service.LockMechanism, this.device.friendlyName);
+
+    this.lockSvc.getCharacteristic(this.platform.Characteristic.LockCurrentState)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getLockCurrentState();
+      });
+
+    this.lockSvc.getCharacteristic(this.platform.Characteristic.LockTargetState)
+      .onGet(() => {
+        if (this.offline) throw this.noResponse;
+        return this.getLockTargetState();
+      })
+      .onSet((v) => { void this.setLockTargetState(v as number); });
+
+    this.lockSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+    this.lockSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
+      .onGet(() => this.getStatusFault());
+
+    this.batterySvc = null;
+    if (this.findValue(FC.BATTERY_LEVEL)) {
+      this.batterySvc =
+        this.accessory.getService(this.platform.Service.Battery) ??
+        this.accessory.addService(this.platform.Service.Battery, `${this.device.friendlyName} Battery`);
+
+      this.batterySvc.getCharacteristic(this.platform.Characteristic.BatteryLevel)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getBatteryLevel();
+        });
+
+      this.batterySvc.getCharacteristic(this.platform.Characteristic.StatusLowBattery)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getStatusLowBattery();
+        });
+    }
+  }
+
+  private getLockCurrentState(): CharacteristicValue {
+    const { LockCurrentState } = this.platform.Characteristic;
+    const v = this.findValue(FC.LOCK_CONTROL);
+    if (this.isLockedValue(v?.value)) return LockCurrentState.SECURED;
+    if (this.isUnlockedValue(v?.value)) return LockCurrentState.UNSECURED;
+    return LockCurrentState.UNKNOWN;
+  }
+
+  private getLockTargetState(): CharacteristicValue {
+    return this.getLockCurrentState() === this.platform.Characteristic.LockCurrentState.SECURED
+      ? this.platform.Characteristic.LockTargetState.SECURED
+      : this.platform.Characteristic.LockTargetState.UNSECURED;
+  }
+
+  private async setLockTargetState(hkState: number): Promise<void> {
+    const locked = hkState === this.platform.Characteristic.LockTargetState.SECURED;
+    this.setDeviceValues([this.buildPatch(FC.LOCK_CONTROL, locked ? 'locked' : 'unlocked')]);
+  }
+
+  private isLockedValue(value: DeviceStateValue['value'] | undefined): boolean {
+    return value === 'locked' || value === 'lock' || value === 'secured' || value === true || value === 1;
+  }
+
+  private isUnlockedValue(value: DeviceStateValue['value'] | undefined): boolean {
+    return value === 'unlocked' || value === 'unlock' || value === 'unsecured' || value === false || value === 0;
+  }
+
+  private getBatteryLevel(): CharacteristicValue {
+    const v = this.findValue(FC.BATTERY_LEVEL);
+    if (v === undefined) return 100;
+    const level = Math.round(Number(v.value));
+    if (!Number.isFinite(level)) return 100;
+    return Math.min(100, Math.max(0, level));
+  }
+
+  private getStatusLowBattery(): CharacteristicValue {
+    return (this.getBatteryLevel() as number) <= 20
+      ? this.platform.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
+      : this.platform.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
+  }
+
+  protected pushCharacteristics(): void {
+    this.lockSvc.updateCharacteristic(
+      this.platform.Characteristic.StatusFault, this.getStatusFault());
+    if (this.offline) {
+      this.lockSvc.updateCharacteristic(this.platform.Characteristic.LockCurrentState, this.noResponse);
+      this.lockSvc.updateCharacteristic(this.platform.Characteristic.LockTargetState, this.noResponse);
+      this.batterySvc?.updateCharacteristic(this.platform.Characteristic.BatteryLevel, this.noResponse);
+      return;
+    }
+
+    this.lockSvc.updateCharacteristic(
+      this.platform.Characteristic.LockCurrentState, this.getLockCurrentState());
+    this.lockSvc.updateCharacteristic(
+      this.platform.Characteristic.LockTargetState, this.getLockTargetState());
+
+    if (this.batterySvc) {
+      this.batterySvc.updateCharacteristic(
+        this.platform.Characteristic.BatteryLevel, this.getBatteryLevel());
+      this.batterySvc.updateCharacteristic(
+        this.platform.Characteristic.StatusLowBattery, this.getStatusLowBattery());
+    }
+  }
+}
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 /**
@@ -1492,6 +1605,10 @@ export function createAccessory(
 
   if (cls === 'landscape-transformer') {
     return new LandscapeTransformerAccessory(platform, pAccessory, device);
+  }
+
+  if (cls === 'door-lock') {
+    return new DoorLockAccessory(platform, pAccessory, device);
   }
 
   platform.log.warn(

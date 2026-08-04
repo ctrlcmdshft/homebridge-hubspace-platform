@@ -13,6 +13,7 @@ exports.SUPPORTED_DEVICE_CLASSES = new Set([
     'power-outlet',
     'portable-air-conditioner',
     'landscape-transformer',
+    'door-lock',
 ]);
 exports.FC = {
     POWER: 'power',
@@ -27,5 +28,7 @@ exports.FC = {
     MODE: 'mode',
     TEMPERATURE: 'temperature',
     OVERLOAD_STATE: 'overload-state',
+    LOCK_CONTROL: 'lock-control',
+    BATTERY_LEVEL: 'battery-level',
 };
 //# sourceMappingURL=types.js.map

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LandscapeTransformerAccessory = exports.PortableAcAccessory = exports.MultiOutletAccessory = exports.OutletAccessory = exports.FanAccessory = exports.LightAccessory = exports.BaseHubspaceAccessory = void 0;
+exports.DoorLockAccessory = exports.LandscapeTransformerAccessory = exports.PortableAcAccessory = exports.MultiOutletAccessory = exports.OutletAccessory = exports.FanAccessory = exports.LightAccessory = exports.BaseHubspaceAccessory = void 0;
 exports.createAccessory = createAccessory;
 const axios_1 = require("axios");
 const types_1 = require("./types");
@@ -1159,6 +1159,101 @@ class LandscapeTransformerAccessory extends BaseHubspaceAccessory {
     }
 }
 exports.LandscapeTransformerAccessory = LandscapeTransformerAccessory;
+class DoorLockAccessory extends BaseHubspaceAccessory {
+    setupServices() {
+        this.lockSvc =
+            this.accessory.getService(this.platform.Service.LockMechanism) ??
+                this.accessory.addService(this.platform.Service.LockMechanism, this.device.friendlyName);
+        this.lockSvc.getCharacteristic(this.platform.Characteristic.LockCurrentState)
+            .onGet(() => {
+            if (this.offline)
+                throw this.noResponse;
+            return this.getLockCurrentState();
+        });
+        this.lockSvc.getCharacteristic(this.platform.Characteristic.LockTargetState)
+            .onGet(() => {
+            if (this.offline)
+                throw this.noResponse;
+            return this.getLockTargetState();
+        })
+            .onSet((v) => { void this.setLockTargetState(v); });
+        this.lockSvc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+        this.lockSvc.getCharacteristic(this.platform.Characteristic.StatusFault)
+            .onGet(() => this.getStatusFault());
+        this.batterySvc = null;
+        if (this.findValue(types_1.FC.BATTERY_LEVEL)) {
+            this.batterySvc =
+                this.accessory.getService(this.platform.Service.Battery) ??
+                    this.accessory.addService(this.platform.Service.Battery, `${this.device.friendlyName} Battery`);
+            this.batterySvc.getCharacteristic(this.platform.Characteristic.BatteryLevel)
+                .onGet(() => {
+                if (this.offline)
+                    throw this.noResponse;
+                return this.getBatteryLevel();
+            });
+            this.batterySvc.getCharacteristic(this.platform.Characteristic.StatusLowBattery)
+                .onGet(() => {
+                if (this.offline)
+                    throw this.noResponse;
+                return this.getStatusLowBattery();
+            });
+        }
+    }
+    getLockCurrentState() {
+        const { LockCurrentState } = this.platform.Characteristic;
+        const v = this.findValue(types_1.FC.LOCK_CONTROL);
+        if (this.isLockedValue(v?.value))
+            return LockCurrentState.SECURED;
+        if (this.isUnlockedValue(v?.value))
+            return LockCurrentState.UNSECURED;
+        return LockCurrentState.UNKNOWN;
+    }
+    getLockTargetState() {
+        return this.getLockCurrentState() === this.platform.Characteristic.LockCurrentState.SECURED
+            ? this.platform.Characteristic.LockTargetState.SECURED
+            : this.platform.Characteristic.LockTargetState.UNSECURED;
+    }
+    async setLockTargetState(hkState) {
+        const locked = hkState === this.platform.Characteristic.LockTargetState.SECURED;
+        this.setDeviceValues([this.buildPatch(types_1.FC.LOCK_CONTROL, locked ? 'locked' : 'unlocked')]);
+    }
+    isLockedValue(value) {
+        return value === 'locked' || value === 'lock' || value === 'secured' || value === true || value === 1;
+    }
+    isUnlockedValue(value) {
+        return value === 'unlocked' || value === 'unlock' || value === 'unsecured' || value === false || value === 0;
+    }
+    getBatteryLevel() {
+        const v = this.findValue(types_1.FC.BATTERY_LEVEL);
+        if (v === undefined)
+            return 100;
+        const level = Math.round(Number(v.value));
+        if (!Number.isFinite(level))
+            return 100;
+        return Math.min(100, Math.max(0, level));
+    }
+    getStatusLowBattery() {
+        return this.getBatteryLevel() <= 20
+            ? this.platform.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
+            : this.platform.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
+    }
+    pushCharacteristics() {
+        this.lockSvc.updateCharacteristic(this.platform.Characteristic.StatusFault, this.getStatusFault());
+        if (this.offline) {
+            this.lockSvc.updateCharacteristic(this.platform.Characteristic.LockCurrentState, this.noResponse);
+            this.lockSvc.updateCharacteristic(this.platform.Characteristic.LockTargetState, this.noResponse);
+            this.batterySvc?.updateCharacteristic(this.platform.Characteristic.BatteryLevel, this.noResponse);
+            return;
+        }
+        this.lockSvc.updateCharacteristic(this.platform.Characteristic.LockCurrentState, this.getLockCurrentState());
+        this.lockSvc.updateCharacteristic(this.platform.Characteristic.LockTargetState, this.getLockTargetState());
+        if (this.batterySvc) {
+            this.batterySvc.updateCharacteristic(this.platform.Characteristic.BatteryLevel, this.getBatteryLevel());
+            this.batterySvc.updateCharacteristic(this.platform.Characteristic.StatusLowBattery, this.getStatusLowBattery());
+        }
+    }
+}
+exports.DoorLockAccessory = DoorLockAccessory;
 function createAccessory(platform, pAccessory, device) {
     const cls = device.deviceClass.toLowerCase();
     if (cls === 'light') {
@@ -1179,6 +1274,9 @@ function createAccessory(platform, pAccessory, device) {
     }
     if (cls === 'landscape-transformer') {
         return new LandscapeTransformerAccessory(platform, pAccessory, device);
+    }
+    if (cls === 'door-lock') {
+        return new DoorLockAccessory(platform, pAccessory, device);
     }
     platform.log.warn(`Unsupported deviceClass "${device.deviceClass}" for "${device.friendlyName}" — skipping.`);
     return null;

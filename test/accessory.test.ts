@@ -1,4 +1,11 @@
-import { LightAccessory, FanAccessory, OutletAccessory, PortableAcAccessory, LandscapeTransformerAccessory } from '../src/accessory';
+import {
+  DoorLockAccessory,
+  LightAccessory,
+  FanAccessory,
+  OutletAccessory,
+  PortableAcAccessory,
+  LandscapeTransformerAccessory,
+} from '../src/accessory';
 import { DeviceStateValue, FC } from '../src/types';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
@@ -29,6 +36,9 @@ const Active = { ACTIVE: 1, INACTIVE: 0 };
 const StatusFault = { NO_FAULT: 0, GENERAL_FAULT: 1 };
 const CurrentHeaterCoolerState = { INACTIVE: 0, IDLE: 1, HEATING: 2, COOLING: 3 };
 const TargetHeaterCoolerState = { AUTO: 0, HEAT: 1, COOL: 2 };
+const LockCurrentState = { UNSECURED: 0, SECURED: 1, JAMMED: 2, UNKNOWN: 3 };
+const LockTargetState = { UNSECURED: 0, SECURED: 1 };
+const StatusLowBattery = { BATTERY_LEVEL_NORMAL: 0, BATTERY_LEVEL_LOW: 1 };
 
 function makePlatform(opts: { exposeStatusFault?: boolean; verbose?: boolean } = {}) {
   const svc = makeSvcMock();
@@ -52,6 +62,8 @@ function makePlatform(opts: { exposeStatusFault?: boolean; verbose?: boolean } =
       Outlet: 'Outlet',
       Switch: 'Switch',
       HeaterCooler: 'HeaterCooler',
+      LockMechanism: 'LockMechanism',
+      Battery: 'Battery',
       AccessoryInformation: 'AccessoryInformation',
     },
     Characteristic: {
@@ -66,6 +78,10 @@ function makePlatform(opts: { exposeStatusFault?: boolean; verbose?: boolean } =
       OutletInUse: 'OutletInUse',
       CurrentHeaterCoolerState,
       TargetHeaterCoolerState,
+      LockCurrentState,
+      LockTargetState,
+      BatteryLevel: 'BatteryLevel',
+      StatusLowBattery,
       CurrentTemperature: 'CurrentTemperature',
       CoolingThresholdTemperature: 'CoolingThresholdTemperature',
       Manufacturer: 'Manufacturer',
@@ -1439,6 +1455,147 @@ describe('LandscapeTransformerAccessory', () => {
       // master + 2 zones = 3 On updates, all with noResponse (Error)
       expect(onCalls.length).toBe(3);
       onCalls.forEach(([, v]) => expect(v).toBeInstanceOf(Error));
+    });
+  });
+});
+
+// ── DoorLockAccessory ─────────────────────────────────────────────────────────
+
+function makeDoorLockDevice(values: DeviceStateValue[]) {
+  return {
+    id: 'lock-1', allIds: ['lock-1'], typeId: 'metadevice.device',
+    friendlyName: 'Laundry Room Lock', deviceClass: 'door-lock',
+    manufacturerName: 'Defiant', model: 'TBD', values,
+  };
+}
+
+describe('DoorLockAccessory', () => {
+  describe('lock state', () => {
+    it.each([
+      ['locked', LockCurrentState.SECURED, LockTargetState.SECURED],
+      ['unlocked', LockCurrentState.UNSECURED, LockTargetState.UNSECURED],
+    ])('lock-control=%j maps to HomeKit lock states', (value, expectedCurrent, expectedTarget) => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeDoorLockDevice([
+        sv(FC.LOCK_CONTROL, value),
+        sv(FC.BATTERY_LEVEL, 85),
+      ]);
+      const lock = new DoorLockAccessory(platform as any, acc as any, device as any);
+
+      lock.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        LockCurrentState, expectedCurrent,
+      );
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        LockTargetState, expectedTarget,
+      );
+    });
+
+    it('reports unknown current state for unexpected lock-control values', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeDoorLockDevice([sv(FC.LOCK_CONTROL, 'jammed')]);
+      const lock = new DoorLockAccessory(platform as any, acc as any, device as any);
+
+      lock.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        LockCurrentState, LockCurrentState.UNKNOWN,
+      );
+    });
+
+    it('sends locked and unlocked values when target state changes', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeDoorLockDevice([sv(FC.LOCK_CONTROL, 'locked')]);
+      new DoorLockAccessory(platform as any, acc as any, device as any);
+      const onSetLockTarget: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[0][0];
+
+      onSetLockTarget(LockTargetState.UNSECURED);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      let [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.LOCK_CONTROL, value: 'unlocked' }),
+      ]);
+
+      onSetLockTarget(LockTargetState.SECURED);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(2);
+      [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[1];
+      expect(patches).toEqual([
+        expect.objectContaining({ functionClass: FC.LOCK_CONTROL, value: 'locked' }),
+      ]);
+      jest.useRealTimers();
+    });
+  });
+
+  describe('battery', () => {
+    it('updates battery level and normal low-battery status', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeDoorLockDevice([
+        sv(FC.LOCK_CONTROL, 'locked'),
+        sv(FC.BATTERY_LEVEL, 85),
+      ]);
+      const lock = new DoorLockAccessory(platform as any, acc as any, device as any);
+
+      lock.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('BatteryLevel', 85);
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusLowBattery, StatusLowBattery.BATTERY_LEVEL_NORMAL,
+      );
+    });
+
+    it('reports low battery at 20 percent or below', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeDoorLockDevice([
+        sv(FC.LOCK_CONTROL, 'locked'),
+        sv(FC.BATTERY_LEVEL, 20),
+      ]);
+      const lock = new DoorLockAccessory(platform as any, acc as any, device as any);
+
+      lock.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusLowBattery, StatusLowBattery.BATTERY_LEVEL_LOW,
+      );
+    });
+  });
+
+  describe('offline', () => {
+    it('sets No Response for lock and battery when offline', () => {
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const device = makeDoorLockDevice([
+        sv(FC.LOCK_CONTROL, 'locked'),
+        sv(FC.BATTERY_LEVEL, 85),
+        sv(FC.AVAILABLE, false),
+      ]);
+      const lock = new DoorLockAccessory(platform as any, acc as any, device as any);
+      (platform._svc.updateCharacteristic as jest.Mock).mockClear();
+
+      lock.updateState(device.values);
+
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        LockCurrentState, expect.any(Error),
+      );
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        LockTargetState, expect.any(Error),
+      );
+      expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith(
+        'BatteryLevel', expect.any(Error),
+      );
     });
   });
 });
