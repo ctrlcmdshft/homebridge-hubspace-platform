@@ -25,5 +25,6 @@ discover.mjs
 .env
 .env.*
 api-dump.txt
+door-lock-test-comment.md
 .env.example
 .story/

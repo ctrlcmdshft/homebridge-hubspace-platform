@@ -102,6 +102,22 @@ function makeAccessoryMock(platform: ReturnType<typeof makePlatform>) {
   };
 }
 
+function makeMultiServiceAccessoryMock(platform: ReturnType<typeof makePlatform>) {
+  const accessory = {
+    context: {},
+    services: [] as Array<ReturnType<typeof makeSvcMock> & { subtype?: string }>,
+    getService: jest.fn((service: string) => service === platform.Service.AccessoryInformation ? makeSvcMock() : undefined),
+    addService: jest.fn((service: string, _name?: string, subtype?: string) => {
+      const svc = Object.assign(makeSvcMock(), { subtype });
+      if (service !== platform.Service.AccessoryInformation) {
+        accessory.services.push(svc);
+      }
+      return svc;
+    }),
+  };
+  return accessory;
+}
+
 function sv(
   functionClass: string,
   value: DeviceStateValue['value'],
@@ -815,6 +831,86 @@ describe('LightAccessory', () => {
       expect(logLine).not.toContain('My Network');
       expect(logLine).not.toContain('112233445566');
       expect(logLine).not.toContain('aabbccddeeff');
+    });
+  });
+
+  describe('multi-endpoint lights', () => {
+    it('creates separate light services for main and trim instances', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'off', 'global'),
+        sv(FC.BRIGHTNESS, 80, 'global'),
+        sv(FC.POWER, 'on', 'main'),
+        sv(FC.BRIGHTNESS, 80, 'main'),
+        sv(FC.COLOR_TEMP, 3300, 'main'),
+        sv(FC.POWER, 'off', 'trim'),
+        sv(FC.BRIGHTNESS, 100, 'trim'),
+        sv(FC.COLOR_RGB, { 'color-rgb': { r: 204, g: 219, b: 255 } }, 'trim'),
+      ]);
+
+      new LightAccessory(platform as any, acc as any, device as any);
+
+      expect(acc.addService).toHaveBeenCalledWith('Lightbulb', 'Ceiling Light Main', 'main');
+      expect(acc.addService).toHaveBeenCalledWith('Lightbulb', 'Ceiling Light Trim', 'trim');
+      expect(acc.services).toHaveLength(2);
+    });
+
+    it('writes power changes to the selected light instance', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on', 'main'),
+        sv(FC.POWER, 'off', 'trim'),
+      ]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const trimSvc = acc.services.find(s => s.subtype === 'trim')!;
+      const onSetPower: (v: boolean) => void =
+        (trimSvc._char.onSet as jest.Mock).mock.calls[0][0];
+
+      onSetPower(true);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.POWER, functionInstance: 'trim', value: 'on' })],
+      );
+    });
+
+    it('writes color temperature and color mode to the main instance', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on', 'main'),
+        sv(FC.COLOR_MODE, 'white', 'main'),
+        sv(FC.COLOR_TEMP, 3300, 'main'),
+        sv(FC.POWER, 'off', 'trim'),
+        sv(FC.COLOR_MODE, 'color', 'trim'),
+        sv(FC.COLOR_RGB, { 'color-rgb': { r: 204, g: 219, b: 255 } }, 'trim'),
+      ]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const mainSvc = acc.services.find(s => s.subtype === 'main')!;
+      const onSetColorTemperature: (v: number) => void =
+        (mainSvc._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetColorTemperature(303);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        [
+          expect.objectContaining({ functionClass: FC.COLOR_TEMP, functionInstance: 'main', value: 3300 }),
+          expect.objectContaining({ functionClass: FC.COLOR_MODE, functionInstance: 'main', value: 'white' }),
+        ],
+      );
     });
   });
 

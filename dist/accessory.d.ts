@@ -38,23 +38,28 @@ export declare abstract class BaseHubspaceAccessory {
     private stateKey;
 }
 export declare class LightAccessory extends BaseHubspaceAccessory {
-    private svc;
-    private pendingHue;
-    private pendingSat;
+    private svcs;
+    private readonly pendingHue;
+    private readonly pendingSat;
+    private get lightInstances();
     protected setupServices(): void;
+    private getLightService;
+    private lightInstanceLabel;
+    private findLightValue;
+    private buildLightPatch;
     private getPower;
     private getBrightness;
     private getColorTemp;
     private getHue;
     private getSaturation;
     private setPower;
-    private brightnessTimer;
+    private readonly brightnessTimers;
     private setBrightness;
-    private colorTempTimer;
+    private readonly colorTempTimers;
     private setColorTemp;
     private setPendingHue;
     private setPendingSat;
-    private flushColorTimer;
+    private readonly flushColorTimers;
     private flushColor;
     protected pushCharacteristics(): void;
 }

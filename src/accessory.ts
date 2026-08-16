@@ -344,85 +344,143 @@ export abstract class BaseHubspaceAccessory {
 // ─── Light accessory ──────────────────────────────────────────────────────────
 
 export class LightAccessory extends BaseHubspaceAccessory {
-  declare private svc: Service;
-  /** Tracks the last HomeKit hue value so we can combine with saturation. */
-  private pendingHue: number | null = null;
-  private pendingSat: number | null = null;
+  declare private svcs: Map<string | undefined, Service>;
+  /** Tracks pending HomeKit hue/saturation by light endpoint so they can be combined. */
+  private readonly pendingHue = new Map<string | undefined, number>();
+  private readonly pendingSat = new Map<string | undefined, number>();
+
+  private get lightInstances(): Array<string | undefined> {
+    const instances = new Set<string>();
+    const endpointClasses: string[] = [FC.POWER, FC.BRIGHTNESS, FC.COLOR_TEMP, FC.COLOR_RGB, FC.COLOR_MODE];
+    for (const [, v] of this.stateMap) {
+      if (!endpointClasses.includes(v.functionClass)) {
+        continue;
+      }
+      const instance = v.functionInstance;
+      if (instance === undefined || instance === 'default' || instance === 'global' || instance === 'primary') {
+        continue;
+      }
+      instances.add(instance);
+    }
+    return instances.size > 1 ? [...instances].sort() : [undefined];
+  }
 
   protected setupServices(): void {
-    this.svc =
-      this.accessory.getService(this.platform.Service.Lightbulb) ??
-      this.accessory.addService(this.platform.Service.Lightbulb, this.device.friendlyName);
+    const instances = this.lightInstances;
+    this.svcs = new Map();
 
-    // Power (always present).
-    this.svc.getCharacteristic(this.platform.Characteristic.On)
-      .onGet(() => {
-        if (this.offline) throw this.noResponse;
-        return this.getPower();
-      })
-      .onSet((v) => { void this.setPower(v as boolean); });
+    for (const instance of instances) {
+      const svc = this.getLightService(instance, instances.length > 1);
+      this.svcs.set(instance, svc);
 
-    // Brightness.
-    if (this.findValue(FC.BRIGHTNESS)) {
-      this.svc.getCharacteristic(this.platform.Characteristic.Brightness)
+      // Power (always present).
+      svc.getCharacteristic(this.platform.Characteristic.On)
         .onGet(() => {
           if (this.offline) throw this.noResponse;
-          return this.getBrightness();
+          return this.getPower(instance);
         })
-        .onSet((v) => { void this.setBrightness(v as number); });
+        .onSet((v) => { void this.setPower(instance, v as boolean); });
+
+      // Brightness.
+      if (this.findLightValue(FC.BRIGHTNESS, instance)) {
+        svc.getCharacteristic(this.platform.Characteristic.Brightness)
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getBrightness(instance);
+          })
+          .onSet((v) => { void this.setBrightness(instance, v as number); });
+      }
+
+      // Color temperature.
+      if (this.findLightValue(FC.COLOR_TEMP, instance)) {
+        const minK = 2700, maxK = 6500;
+        svc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
+          .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getColorTemp(instance);
+          })
+          .onSet((v) => { void this.setColorTemp(instance, v as number); });
+      }
+
+      // RGB color (Hue + Saturation).
+      if (this.findLightValue(FC.COLOR_RGB, instance)) {
+        svc.getCharacteristic(this.platform.Characteristic.Hue)
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getHue(instance);
+          })
+          .onSet((v) => { void this.setPendingHue(instance, v as number); });
+
+        svc.getCharacteristic(this.platform.Characteristic.Saturation)
+          .onGet(() => {
+            if (this.offline) throw this.noResponse;
+            return this.getSaturation(instance);
+          })
+          .onSet((v) => { void this.setPendingSat(instance, v as number); });
+      }
+
+      // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
+      if (this.platform.exposeStatusFault) {
+        svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+        svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+          .onGet(() => this.getStatusFault());
+      }
+    }
+  }
+
+  private getLightService(instance: string | undefined, multiEndpoint: boolean): Service {
+    if (!multiEndpoint) {
+      return this.accessory.getService(this.platform.Service.Lightbulb) ??
+        this.accessory.addService(this.platform.Service.Lightbulb, this.device.friendlyName);
     }
 
-    // Color temperature.
-    if (this.findValue(FC.COLOR_TEMP)) {
-      const minK = 2700, maxK = 6500;
-      this.svc.getCharacteristic(this.platform.Characteristic.ColorTemperature)
-        .setProps({ minValue: kelvinToMired(maxK), maxValue: kelvinToMired(minK) })
-        .onGet(() => {
-          if (this.offline) throw this.noResponse;
-          return this.getColorTemp();
-        })
-        .onSet((v) => { void this.setColorTemp(v as number); });
-    }
+    const existing = this.accessory.services.find((s: { subtype?: string }) => s.subtype === instance);
+    if (existing) return existing as Service;
 
-    // RGB color (Hue + Saturation).
-    if (this.findValue(FC.COLOR_RGB)) {
-      this.svc.getCharacteristic(this.platform.Characteristic.Hue)
-        .onGet(() => {
-          if (this.offline) throw this.noResponse;
-          return this.getHue();
-        })
-        .onSet((v) => { void this.setPendingHue(v as number); });
+    const label = this.lightInstanceLabel(instance);
+    return this.accessory.addService(
+      this.platform.Service.Lightbulb,
+      `${this.device.friendlyName} ${label}`,
+      instance,
+    );
+  }
 
-      this.svc.getCharacteristic(this.platform.Characteristic.Saturation)
-        .onGet(() => {
-          if (this.offline) throw this.noResponse;
-          return this.getSaturation();
-        })
-        .onSet((v) => { void this.setPendingSat(v as number); });
-    }
+  private lightInstanceLabel(instance: string | undefined): string {
+    if (!instance) return this.device.friendlyName;
+    return instance
+      .split(/[-_ ]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
 
-    // Non-standard: StatusFault for offline detection (opt-in; may not render in Apple Home).
-    if (this.platform.exposeStatusFault) {
-      this.svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
-      this.svc.getCharacteristic(this.platform.Characteristic.StatusFault)
-        .onGet(() => this.getStatusFault());
-    }
+  private findLightValue(functionClass: string, instance: string | undefined): DeviceStateValue | undefined {
+    return instance === undefined ? this.findValue(functionClass) : this.findValue(functionClass, instance);
+  }
+
+  private buildLightPatch(
+    functionClass: string,
+    value: DeviceStateValue['value'],
+    instance: string | undefined,
+  ): Partial<DeviceStateValue> {
+    return this.buildPatch(functionClass, value, instance);
   }
 
   // ── Getters ───────────────────────────────────────────────────────────────────
 
-  private getPower(): CharacteristicValue {
-    const v = this.findValue(FC.POWER);
+  private getPower(instance: string | undefined): CharacteristicValue {
+    const v = this.findLightValue(FC.POWER, instance);
     return v?.value === 'on' || v?.value === 'true' || v?.value === true || v?.value === 1;
   }
 
-  private getBrightness(): CharacteristicValue {
-    const v = this.findValue(FC.BRIGHTNESS);
+  private getBrightness(instance: string | undefined): CharacteristicValue {
+    const v = this.findLightValue(FC.BRIGHTNESS, instance);
     return v ? Math.round(Number(v.value)) : 100;
   }
 
-  private getColorTemp(): CharacteristicValue {
-    const v = this.findValue(FC.COLOR_TEMP);
+  private getColorTemp(instance: string | undefined): CharacteristicValue {
+    const v = this.findLightValue(FC.COLOR_TEMP, instance);
     if (!v) return 370; // 2702 K default
     const kelvin = parseKelvin(v.value);
     if (kelvin === null) return 370;
@@ -431,115 +489,127 @@ export class LightAccessory extends BaseHubspaceAccessory {
     return Math.min(maxMired, Math.max(minMired, kelvinToMired(kelvin)));
   }
 
-  private getHue(): CharacteristicValue {
-    const v = this.findValue(FC.COLOR_RGB);
+  private getHue(instance: string | undefined): CharacteristicValue {
+    const v = this.findLightValue(FC.COLOR_RGB, instance);
     if (!v) return 0;
     return rgbToHsv(...parseColorRgb(v.value))[0];
   }
 
-  private getSaturation(): CharacteristicValue {
-    const v = this.findValue(FC.COLOR_RGB);
+  private getSaturation(instance: string | undefined): CharacteristicValue {
+    const v = this.findLightValue(FC.COLOR_RGB, instance);
     if (!v) return 0;
     return rgbToHsv(...parseColorRgb(v.value))[1];
   }
 
   // ── Setters ───────────────────────────────────────────────────────────────────
 
-  private async setPower(on: boolean): Promise<void> {
-    this.setDeviceValues([this.buildPatch(FC.POWER, on ? 'on' : 'off')]);
+  private async setPower(instance: string | undefined, on: boolean): Promise<void> {
+    this.setDeviceValues([this.buildLightPatch(FC.POWER, on ? 'on' : 'off', instance)]);
   }
 
-  private brightnessTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly brightnessTimers = new Map<string | undefined, ReturnType<typeof setTimeout>>();
 
-  private async setBrightness(value: number): Promise<void> {
-    if (this.brightnessTimer) clearTimeout(this.brightnessTimer);
-    this.brightnessTimer = setTimeout(async () => {
+  private async setBrightness(instance: string | undefined, value: number): Promise<void> {
+    const existingTimer = this.brightnessTimers.get(instance);
+    if (existingTimer) clearTimeout(existingTimer);
+    this.brightnessTimers.set(instance, setTimeout(async () => {
       const rounded = Math.round(value);
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildPatch(FC.BRIGHTNESS, rounded),
+        this.buildLightPatch(FC.BRIGHTNESS, rounded, instance),
       ];
-      if (rounded > 0 && !this.getPower()) {
-        patches.push(this.buildPatch(FC.POWER, 'on'));
+      if (rounded > 0 && !this.getPower(instance)) {
+        patches.push(this.buildLightPatch(FC.POWER, 'on', instance));
       }
       this.setDeviceValues(patches);
-    }, 300);
+      this.brightnessTimers.delete(instance);
+    }, 300));
   }
 
-  private colorTempTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly colorTempTimers = new Map<string | undefined, ReturnType<typeof setTimeout>>();
 
-  private async setColorTemp(mireds: number): Promise<void> {
-    if (this.colorTempTimer) clearTimeout(this.colorTempTimer);
-    this.colorTempTimer = setTimeout(async () => {
+  private async setColorTemp(instance: string | undefined, mireds: number): Promise<void> {
+    const existingTimer = this.colorTempTimers.get(instance);
+    if (existingTimer) clearTimeout(existingTimer);
+    this.colorTempTimers.set(instance, setTimeout(async () => {
       const k = miredToKelvin(mireds);
-      const current = this.findValue(FC.COLOR_TEMP);
+      const current = this.findLightValue(FC.COLOR_TEMP, instance);
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildPatch(FC.COLOR_TEMP, this.colorTempPatchValue(k, current)),
+        this.buildLightPatch(FC.COLOR_TEMP, this.colorTempPatchValue(k, current), instance),
       ];
-      if (this.findValue(FC.COLOR_MODE)) {
-        patches.push(this.buildPatch(FC.COLOR_MODE, 'white'));
+      if (this.findLightValue(FC.COLOR_MODE, instance)) {
+        patches.push(this.buildLightPatch(FC.COLOR_MODE, 'white', instance));
       }
       this.setDeviceValues(patches);
-    }, 300);
+      this.colorTempTimers.delete(instance);
+    }, 300));
   }
 
-  private async setPendingHue(h: number): Promise<void> {
-    this.pendingHue = h;
-    await this.flushColor();
+  private async setPendingHue(instance: string | undefined, h: number): Promise<void> {
+    this.pendingHue.set(instance, h);
+    await this.flushColor(instance);
   }
 
-  private async setPendingSat(s: number): Promise<void> {
-    this.pendingSat = s;
-    await this.flushColor();
+  private async setPendingSat(instance: string | undefined, s: number): Promise<void> {
+    this.pendingSat.set(instance, s);
+    await this.flushColor(instance);
   }
 
   /** Debounce hue + saturation into a single RGB set call. */
-  private flushColorTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly flushColorTimers = new Map<string | undefined, ReturnType<typeof setTimeout>>();
 
-  private async flushColor(): Promise<void> {
-    if (this.flushColorTimer) clearTimeout(this.flushColorTimer);
-    this.flushColorTimer = setTimeout(async () => {
-      const h = this.pendingHue ?? this.getHue() as number;
-      const s = this.pendingSat ?? this.getSaturation() as number;
-      const brightness = this.getBrightness() as number;
+  private async flushColor(instance: string | undefined): Promise<void> {
+    const existingTimer = this.flushColorTimers.get(instance);
+    if (existingTimer) clearTimeout(existingTimer);
+    this.flushColorTimers.set(instance, setTimeout(async () => {
+      const h = this.pendingHue.get(instance) ?? this.getHue(instance) as number;
+      const s = this.pendingSat.get(instance) ?? this.getSaturation(instance) as number;
+      const brightness = this.getBrightness(instance) as number;
       const [r, g, b] = hsvToRgb(h, s, brightness);
 
-      const rgbPatch = this.buildPatch(FC.COLOR_RGB, '');
+      const rgbPatch = this.buildLightPatch(FC.COLOR_RGB, '', instance);
       rgbPatch.value = { 'color-rgb': { r, g, b } };
       const patches: Partial<DeviceStateValue>[] = [rgbPatch];
-      if (this.findValue(FC.COLOR_MODE)) {
-        patches.push(this.buildPatch(FC.COLOR_MODE, 'color'));
+      if (this.findLightValue(FC.COLOR_MODE, instance)) {
+        patches.push(this.buildLightPatch(FC.COLOR_MODE, 'color', instance));
       }
       this.setDeviceValues(patches);
-      this.pendingHue = null;
-      this.pendingSat = null;
-    }, 150);
+      this.pendingHue.delete(instance);
+      this.pendingSat.delete(instance);
+      this.flushColorTimers.delete(instance);
+    }, 150));
   }
 
   // ── Push ──────────────────────────────────────────────────────────────────────
 
   protected pushCharacteristics(): void {
     if (this.platform.exposeStatusFault) {
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.StatusFault, this.getStatusFault());
+      for (const [, svc] of this.svcs) {
+        svc.updateCharacteristic(
+          this.platform.Characteristic.StatusFault, this.getStatusFault());
+      }
     }
     if (this.offline) {
-      this.svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      for (const [, svc] of this.svcs) {
+        svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      }
       return;
     }
-    this.svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower());
+    for (const [instance, svc] of this.svcs) {
+      svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower(instance));
 
-    if (this.findValue(FC.BRIGHTNESS)) {
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.Brightness, this.getBrightness());
-    }
-    if (this.findValue(FC.COLOR_TEMP)) {
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.ColorTemperature, this.getColorTemp());
-    }
-    if (this.findValue(FC.COLOR_RGB)) {
-      this.svc.updateCharacteristic(this.platform.Characteristic.Hue, this.getHue());
-      this.svc.updateCharacteristic(
-        this.platform.Characteristic.Saturation, this.getSaturation());
+      if (this.findLightValue(FC.BRIGHTNESS, instance)) {
+        svc.updateCharacteristic(
+          this.platform.Characteristic.Brightness, this.getBrightness(instance));
+      }
+      if (this.findLightValue(FC.COLOR_TEMP, instance)) {
+        svc.updateCharacteristic(
+          this.platform.Characteristic.ColorTemperature, this.getColorTemp(instance));
+      }
+      if (this.findLightValue(FC.COLOR_RGB, instance)) {
+        svc.updateCharacteristic(this.platform.Characteristic.Hue, this.getHue(instance));
+        svc.updateCharacteristic(
+          this.platform.Characteristic.Saturation, this.getSaturation(instance));
+      }
     }
   }
 }

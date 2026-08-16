@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.1.4] - 2026-08-16
+
+This release adds community-tested support for split main/trim Hubspace light fixtures and adds initial Hubspace door lock support.
+
+### Added
+
+- **Split main/trim light support** — multi-endpoint Hubspace lights such as the Commercial Electric NB36a6INRGB-W recessed light now expose separate HomeKit Lightbulb services for each controllable light endpoint, for example `Back Patio Main` and `Back Patio Trim`.
+- **Instance-specific light control** — power, brightness, color temperature, RGB color, and color mode writes now target the selected light endpoint's Hubspace `functionInstance`, so main and trim controls no longer interfere with each other.
+- **Door lock support** — Hubspace `door-lock` devices now expose a HomeKit LockMechanism service with lock/unlock target control and current lock state.
+- **Door lock battery service** — locks that report `battery-level` now expose battery level and low-battery status in HomeKit.
+
+### Changed
+
+- **Package hygiene** — local test-note files are excluded from npm package contents.
+
+### Thanks
+
+- Thanks to @cbride for the Commercial Electric NB36a6INRGB-W capability dump and confirmation that the split patio light support works.
+
+---
+
 ## [2.1.3] - 2026-07-31
 
 This release adds support for portable/window air conditioners and Hampton Bay landscape transformers, hardens the Homebridge UI login flow, and rolls in field-tested fixes for fan speed, portable AC fan control, and Hubspace color-temperature formats. Version 2.1.3 corrects the packaged changelog so Homebridge opens directly on the release notes instead of an empty `[Unreleased]` section.
