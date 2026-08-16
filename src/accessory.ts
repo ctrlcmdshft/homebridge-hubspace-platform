@@ -368,6 +368,11 @@ export class LightAccessory extends BaseHubspaceAccessory {
   protected setupServices(): void {
     const instances = this.lightInstances;
     this.svcs = new Map();
+    if (instances.length > 1 && this.platform.debug) {
+      this.log.info(
+        `Registered split light "${this.device.friendlyName}" with endpoints: ${instances.join(', ')}`,
+      );
+    }
 
     for (const instance of instances) {
       const svc = this.getLightService(instance, instances.length > 1);

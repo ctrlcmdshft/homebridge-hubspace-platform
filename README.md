@@ -28,7 +28,7 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 <p align="center">
 <a href="#supported-devices"><b>Supported devices</b></a> · <a href="#requirements"><b>Requirements</b></a> · <a href="#two-factor-authentication-2fa"><b>2FA</b></a> · <a href="#installation"><b>Installation</b></a> · <a href="#configuration"><b>Configuration</b></a>
 <br>
-<a href="#real-time-push-conclave"><b>Conclave</b></a> · <a href="#troubleshooting"><b>Troubleshooting</b></a> · <a href="#requesting-support-for-a-new-device"><b>New device support</b></a> · <a href="#development"><b>Development</b></a>
+<a href="#real-time-push-conclave"><b>Conclave</b></a> · <a href="#troubleshooting"><b>Troubleshooting</b></a> · <a href="#requesting-support-for-a-new-device"><b>New device support</b></a> · <a href="#support-this-project"><b>Support</b></a> · <a href="#development"><b>Development</b></a>
 </p>
 
 ---
@@ -41,6 +41,7 @@ Support is capability-based, so nearby Hubspace models often work even if they a
 | --- | --- | --- | --- |
 | Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); `fan`, `ceiling-fan` | Fan on/off, speed, light kit on/off, brightness, rotation direction when reported, optional Comfort Breeze and master-power switches | Tested with hardware |
 | Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Tested with hardware |
+| Split main/trim lights | Commercial Electric Smart Adjustable CCT/RGB Recessed Light Trim (NB36a6INRGB-W); `light` with `main` and `trim` instances | Separate Lightbulb services for each endpoint, such as main white/CCT light and trim RGB night light | Community tested |
 | Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Tested with hardware |
 | Switches | Hubspace Smart Switch; `switch` | Switch on/off | Implemented, untested |
 | Portable/window ACs | Vissani VAP05R1AWT, VAW06R1AWTS-style models; `portable-air-conditioner` | HeaterCooler service with power, cool-only target mode, cooling setpoint, current temperature, fan speed, StatusFault | Tested with hardware and community logs |
@@ -56,6 +57,7 @@ Device-dependent controls only appear when the Hubspace API reports the matching
 | Master-power switch | Separate `power[primary]` and `power[fan-power]`, plus `exposeMasterPowerSwitch: true` |
 | RGB color | `color-rgb` |
 | Color temperature | `color-temperature` |
+| Split light endpoints | Multiple non-global light instances such as `power[main]`, `brightness[main]`, `power[trim]`, and `color-rgb[trim]` |
 
 All EcoSmart/Hubspace A19 bulbs should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only.
 
@@ -226,6 +228,10 @@ Copy everything from `COPY FROM HERE` to the end and paste it into your issue. Y
 ### Opening an issue
 
 [Open a GitHub issue](https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues/new/choose) and paste the output from either method above, along with your device's name and model as shown in the Hubspace app.
+
+## Support this project
+
+This plugin is maintained independently for the Hubspace/Homebridge community. If it saves you time, you can support ongoing device testing and maintenance through [GitHub Sponsors](https://github.com/sponsors/ctrlcmdshft) or [PayPal](https://paypal.me/cknudsen).
 
 ## Development
 

@@ -2,7 +2,7 @@
   "name": "homebridge-hubspace-platform",
   "displayName": "Homebridge Hubspace Platform",
   "version": "2.1.4",
-  "description": "Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, and switches.",
+  "description": "Homebridge platform plugin for Hubspace smart home devices (Home Depot / Afero cloud). Supports lights, ceiling fans, outlets, switches, ACs, landscape transformers, and locks.",
   "license": "MIT",
   "author": "ctrlcmdshft",
   "homepage": "https://github.com/ctrlcmdshft/homebridge-hubspace-platform#readme",
@@ -13,10 +13,16 @@
   "bugs": {
     "url": "https://github.com/ctrlcmdshft/homebridge-hubspace-platform/issues"
   },
-  "funding": {
-    "type": "paypal",
-    "url": "https://paypal.me/cknudsen"
-  },
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/ctrlcmdshft"
+    },
+    {
+      "type": "paypal",
+      "url": "https://paypal.me/cknudsen"
+    }
+  ],
   "publishConfig": {
     "access": "public"
   },

@@ -43,13 +43,13 @@
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log internal plugin activity: API calls (GET/SET STATE, token refresh), Conclave push details (quick-polls, device ID resolution, hub sweeps), and raw capabilities when an unsupported device is skipped."
+        "description": "Log API calls, token refreshes, Conclave push details, unsupported-device capability summaries, and device discovery decisions. Enable temporarily while troubleshooting."
       },
       "verbose": {
         "title": "Enable Verbose Logging",
         "type": "boolean",
         "default": false,
-        "description": "Log full device state payloads on every update (very noisy). Use only when diagnosing missing capabilities or wrong values. Implies debug."
+        "description": "Log every device state value on each update. Very noisy; use only when gathering data for a bug report or new device support request. Implies debug."
       },
       "exposeComfortBreeze": {
         "title": "Expose Comfort Breeze Switch",
@@ -67,7 +67,7 @@
         "title": "Expose Status Fault on Fans and Lights",
         "type": "boolean",
         "default": false,
-        "description": "Show a fault indicator on fan and light tiles when a device goes offline. Non-standard per HAP spec — visible in third-party HomeKit apps (Eve, Controller for HomeKit); may not display in Apple Home."
+        "description": "Add a non-standard fault indicator to fan and light services when Hubspace reports the device offline. Visible in third-party HomeKit apps such as Eve or Controller for HomeKit; Apple Home may not display it."
       },
       "invertOutletStatus": {
         "title": "Invert Outlet Status",
@@ -85,7 +85,7 @@
         "title": "Excluded Devices",
         "type": "string",
         "default": "",
-        "description": "Comma-separated friendly names of devices to skip during discovery (e.g. \"Bulb, Outdoor plug, Tape light\"). Useful when Hubspace exposes sub-devices you do not want in HomeKit."
+        "description": "Comma-separated Hubspace friendly names to hide from HomeKit, matched case-insensitively. Useful for duplicate devices, unwanted sub-devices, or devices managed by another plugin."
       }
     },
     "required": ["username", "password"],

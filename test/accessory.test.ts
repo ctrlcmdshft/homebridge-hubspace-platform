@@ -856,6 +856,22 @@ describe('LightAccessory', () => {
       expect(acc.services).toHaveLength(2);
     });
 
+    it('logs detected split-light endpoints when debug is enabled', () => {
+      const platform = makePlatform();
+      platform.debug = true;
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on', 'main'),
+        sv(FC.POWER, 'off', 'trim'),
+      ]);
+
+      new LightAccessory(platform as any, acc as any, device as any);
+
+      expect(platform.log.info).toHaveBeenCalledWith(
+        '[Device] Registered split light "Ceiling Light" with endpoints: main, trim',
+      );
+    });
+
     it('writes power changes to the selected light instance', async () => {
       jest.useFakeTimers();
       const platform = makePlatform();
