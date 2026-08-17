@@ -21,6 +21,8 @@
 
 Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home Depot, powered by the Afero cloud) with Apple HomeKit via [Homebridge](https://homebridge.io). Control ceiling fans, lights, outlets, switches, portable/window air conditioners, landscape transformers, and door locks from the Home app or with Siri.
 
+Most users should install through the Homebridge UI, open the plugin settings, sign in with their Hubspace account, and restart Homebridge.
+
 > **Disclaimer:** This is an unofficial, community-driven plugin. [See disclaimer below.](#disclaimer)
 
 ---
@@ -37,12 +39,12 @@ Integrates [Hubspace](https://www.hubspace.com) smart home devices (sold at Home
 
 Support is capability-based, so nearby Hubspace models often work even if they are not listed by name. The models below are the ones this plugin has been tested against or implemented from community logs.
 
-| Category | Examples / classes | HomeKit exposure | Status |
+| Category | Examples / classes | HomeKit exposure | Verification |
 | --- | --- | --- | --- |
-| Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); `fan`, `ceiling-fan` | Fan on/off, speed, light kit on/off, brightness, rotation direction when reported, optional Comfort Breeze and master-power switches | Tested with hardware |
-| Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Tested with hardware |
+| Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); `fan`, `ceiling-fan` | Fan on/off, speed, light kit controls, rotation direction when reported, optional Comfort Breeze and master-power switches | Hardware tested |
+| Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Hardware tested |
 | Split main/trim lights | Commercial Electric Smart Adjustable CCT/RGB Recessed Light Trim (NB36a6INRGB-W); `light` with `main` and `trim` instances | Separate Lightbulb services for each endpoint, such as main white/CCT light and trim RGB night light | Community tested |
-| Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Tested with hardware |
+| Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Hardware tested |
 | Switches | Hubspace Smart Switch; `switch` | Switch on/off | Implemented, untested |
 | Portable/window ACs | Vissani VAP05R1AWT, VAW06R1AWTS-style models; `portable-air-conditioner` | HeaterCooler service with power, cool-only target mode, cooling setpoint, current temperature, fan speed, StatusFault | Tested with hardware and community logs |
 | Landscape transformers | Hampton Bay Smart 200W Landscape Transformer (HB-200-1215WIFI); `landscape-transformer` | Master switch, one switch per detected zone, overload StatusFault | Community tested |
@@ -89,6 +91,14 @@ Authentication tokens are cached locally so you only need to log in again when t
 
 > **Note:** `npm install -g` installs into the system Node prefix, not the Homebridge plugin directory. On most setups (Docker, hb-service, HOOBS) the plugin won't be found. Prefer the Homebridge UI where possible.
 
+### First run
+
+1. Install the plugin.
+2. Open **Plugin Settings**.
+3. Click **Start Login** and complete the Hubspace sign-in flow.
+4. Restart Homebridge.
+5. Check HomeKit for the discovered accessories.
+
 ## Configuration
 
 Minimal `config.json` entry under `"platforms"`:
@@ -110,14 +120,14 @@ Minimal `config.json` entry under `"platforms"`:
 | `username` | string | **required** | Hubspace account email |
 | `password` | string | **required** | Hubspace account password |
 | `pollingInterval` | integer | `300` with Conclave, `30` without | Polling fallback interval in seconds. Valid range: 10-600. Lower values can help devices that do not reliably emit push events. |
-| `debug` | boolean | `false` | Log API/network activity, token refreshes, Conclave details, and raw capabilities for unsupported devices. |
-| `verbose` | boolean | `false` | Log full device state on every poll cycle. Very noisy; use this when [requesting support for a new device](#requesting-support-for-a-new-device). Implies `debug`. |
+| `debug` | boolean | `false` | Log API calls, token refreshes, Conclave push details, unsupported-device capability summaries, and device discovery decisions. Enable temporarily while troubleshooting. |
+| `verbose` | boolean | `false` | Log every device state value on each update. Very noisy; use only when gathering data for a bug report or new device support request. Implies `debug`. |
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
 | `exposeComfortBreeze` | boolean | `false` | Add a separate "Comfort Breeze" Switch tile for ceiling fans that support it |
 | `exposeMasterPowerSwitch` | boolean | `false` | Add a separate Switch tile for the ceiling-fan master power relay (only appears on fans where the master relay is distinct from the fan control) |
-| `exposeStatusFault` | boolean | `false` | Show a StatusFault indicator on fan and light tiles when the device is reported offline by the Hubspace cloud. Non-standard — visible in Eve and Controller for HomeKit; may not display in Apple Home. |
+| `exposeStatusFault` | boolean | `false` | Add a non-standard fault indicator to fan and light services when Hubspace reports the device offline. Visible in third-party HomeKit apps such as Eve or Controller for HomeKit; Apple Home may not display it. |
 | `invertOutletStatus` | boolean | `false` | Invert the reported on/off state for smart plugs that report their status backwards |
-| `excludedDevices` | string | — | Comma-separated Hubspace friendly names to skip during discovery. Matching is case-insensitive; unmatched entries are logged as warnings to catch typos. |
+| `excludedDevices` | string | — | Comma-separated Hubspace friendly names to hide from HomeKit, matched case-insensitively. Useful for duplicate devices, unwanted sub-devices, or devices managed by another plugin. |
 | `tokenCachePath` | string | — | Override the path for the cached auth token file. Leave blank to use the Homebridge storage directory (recommended). |
 
 > Outlets, portable/window air conditioners, and landscape transformers expose fault status automatically where HomeKit supports it. The `exposeStatusFault` option only adds the non-standard fault characteristic to fan and light services.
@@ -138,20 +148,24 @@ No configuration is required — Conclave is on by default. Set `"disableConclav
 ## Troubleshooting
 
 **Authentication failed / 2FA not working**
+
 - Open **Plugin Settings** in Homebridge UI and use the **Start Login** button — this is the recommended way to authenticate, especially for 2FA accounts.
 - Confirm your username and password work in the Hubspace app on your phone.
 - If login previously worked but stopped, delete `<homebridge-storage>/hubspace-tokens.json` and log in again via Plugin Settings.
 
 **Accessories show as `No Response`**
+
 - Check Homebridge logs for `[Hubspace]` error lines.
 - Enable `"debug": true` temporarily to see API call activity (GET STATE, SET STATE, token refresh).
 - Verify your Homebridge host can reach `semantics2.afero.net`.
 
 **Device not appearing**
+
 - Check whether the device name is listed in `excludedDevices`.
 - The log will show an `Unsupported deviceClass` warning for unsupported devices. Enable `"debug": true` for a capability dump, or run the [standalone dump script](#requesting-support-for-a-new-device) — no restart needed.
 
 **Device appears but a characteristic is wrong**
+
 - Enable `"verbose": true` and restart Homebridge. Every poll cycle will print a `State for "..."` line with every capability and value the API returned. Paste that line in a GitHub issue along with a description of what HomeKit shows vs. what you expect.
 
 ## Requesting support for a new device
