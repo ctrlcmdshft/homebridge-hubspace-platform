@@ -67,7 +67,7 @@
     "homebridge": "^2.0.2",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.9",
-    "typescript": "5.5.4"
+    "typescript": "7.0.2"
   },
   "socket": {
     "ignore": {
