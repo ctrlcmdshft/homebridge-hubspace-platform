@@ -1274,7 +1274,11 @@ class DoorLockAccessory extends BaseHubspaceAccessory {
     }
     async setLockTargetState(hkState) {
         const locked = hkState === this.platform.Characteristic.LockTargetState.SECURED;
-        this.setDeviceValues([this.buildPatch(types_1.FC.LOCK_CONTROL, locked ? 'locked' : 'unlocked')]);
+        const command = locked ? 'locking' : 'unlocking';
+        if (this.platform.debug) {
+            this.log.info(`Lock target for "${this.device.friendlyName}": lock-control=${command}`);
+        }
+        this.setDeviceValues([this.buildPatch(types_1.FC.LOCK_CONTROL, command)]);
     }
     isLockedValue(value) {
         return value === 'locked' || value === 'lock' || value === 'secured' || value === true || value === 1;

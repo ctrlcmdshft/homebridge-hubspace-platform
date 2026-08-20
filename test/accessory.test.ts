@@ -1618,7 +1618,7 @@ describe('DoorLockAccessory', () => {
       );
     });
 
-    it('sends locked and unlocked values when target state changes', async () => {
+    it('sends locking and unlocking commands when target state changes', async () => {
       jest.useFakeTimers();
       const platform = makePlatform();
       const acc = makeAccessoryMock(platform);
@@ -1634,7 +1634,7 @@ describe('DoorLockAccessory', () => {
       expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
       let [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[0];
       expect(patches).toEqual([
-        expect.objectContaining({ functionClass: FC.LOCK_CONTROL, value: 'unlocked' }),
+        expect.objectContaining({ functionClass: FC.LOCK_CONTROL, value: 'unlocking' }),
       ]);
 
       onSetLockTarget(LockTargetState.SECURED);
@@ -1644,7 +1644,7 @@ describe('DoorLockAccessory', () => {
       expect(platform.client.setDeviceState).toHaveBeenCalledTimes(2);
       [, patches] = (platform.client.setDeviceState as jest.Mock).mock.calls[1];
       expect(patches).toEqual([
-        expect.objectContaining({ functionClass: FC.LOCK_CONTROL, value: 'locked' }),
+        expect.objectContaining({ functionClass: FC.LOCK_CONTROL, value: 'locking' }),
       ]);
       jest.useRealTimers();
     });
