@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.1.6] - 2026-08-21
+
+### Changed
+
+- **Changelog correction** — the full changelog bundled with the plugin now includes the missing 2.1.5 release notes.
+
+---
+
+## [2.1.5] - 2026-08-20
+
+### Fixed
+
+- **Door lock control** — HomeKit lock and unlock changes now send Hubspace's correct `locking` and `unlocking` commands.
+
+### Changed
+
+- **Maintenance updates** — dependency, build tooling, and repository security updates.
+
+---
+
 ## [2.1.4] - 2026-08-16
 
 This release adds community-tested support for split main/trim Hubspace light fixtures and adds initial Hubspace door lock support.
