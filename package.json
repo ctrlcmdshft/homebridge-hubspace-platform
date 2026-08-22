@@ -26,6 +26,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist/",
+    "homebridge-ui/",
+    "config.schema.json",
+    "README.md",
+    "CHANGELOG.md",
+    "icon.png",
+    "homebridge.png"
+  ],
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
