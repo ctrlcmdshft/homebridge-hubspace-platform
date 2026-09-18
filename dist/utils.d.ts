@@ -12,5 +12,5 @@ export declare function parseKelvin(value: unknown): number | null;
 export declare function formatKelvinForHubspace(kelvin: number, currentValue: unknown): string | number;
 export declare function miredToKelvin(m: number): number;
 export declare function hubspeedToPercent(value: string): number;
-export declare function percentToHubspeed(percent: number, currentValue: string): string;
+export declare function percentToHubspeed(percent: number, currentValue: string, allowedValues?: string[]): string;
 //# sourceMappingURL=utils.d.ts.map

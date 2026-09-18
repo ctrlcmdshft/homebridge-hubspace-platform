@@ -649,12 +649,13 @@ export class FanAccessory extends BaseHubspaceAccessory {
       })
       .onSet((v) => { void this.setFanActive(v as number, fanPower?.functionInstance); });
 
-    // Rotation speed — 0 = off, 25/50/75/100 = speed steps.
+    // Rotation speed — use the device's advertised steps when available.
     if (this.findValue(FC.FAN_SPEED)) {
       this.rememberCurrentFanSpeed();
+      const speedStep = this.getFanSpeedStep();
       this.fanSvc.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .updateValue(this.getFanSpeed())
-        .setProps({ minValue: 0, maxValue: 100, minStep: 25 })
+        .setProps({ minValue: 0, maxValue: 100, minStep: speedStep })
         .onGet(() => {
           if (this.offline) throw this.noResponse;
           return this.getFanSpeed();
@@ -846,7 +847,11 @@ export class FanAccessory extends BaseHubspaceAccessory {
     }
     this.clearSuppressedTurnOnSpeed();
     const current = this.findValue(FC.FAN_SPEED);
-    const raw = percentToHubspeed(percent, String(current?.value ?? 'low'));
+    const raw = percentToHubspeed(
+      percent,
+      String(current?.value ?? 'low'),
+      this.getAllowedFanSpeeds(current?.functionInstance),
+    );
     if (
       this.restoreFanSpeedValue !== null
       && hubspeedToPercent(String(raw)) === hubspeedToPercent(String(this.restoreFanSpeedValue))
@@ -858,6 +863,26 @@ export class FanAccessory extends BaseHubspaceAccessory {
     this.clearFanSpeedRestore();
     this.rememberFanSpeed(raw);
     this.setDeviceValues([this.buildPatch(FC.FAN_SPEED, raw)]);
+  }
+
+  private getAllowedFanSpeeds(instance: string | undefined): string[] | undefined {
+    return this.device.fanSpeedCategories?.[instance ?? 'undefined'];
+  }
+
+  private getFanSpeedStep(): number {
+    const current = this.findValue(FC.FAN_SPEED);
+    const percentages = [...new Set(
+      (this.getAllowedFanSpeeds(current?.functionInstance) ?? [])
+        .map(hubspeedToPercent)
+        .filter(percent => percent > 0 && percent <= 100),
+    )].sort((a, b) => a - b);
+    if (percentages.length < 2) return 25;
+
+    let smallestStep = 100;
+    for (let i = 1; i < percentages.length; i++) {
+      smallestStep = Math.min(smallestStep, percentages[i] - percentages[i - 1]);
+    }
+    return Math.max(1, smallestStep);
   }
 
   private rememberCurrentFanSpeed(): void {
@@ -1183,6 +1208,8 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
 
   protected setupServices(): void {
     this.outletServices = new Map();
+    this.removeStaleDefaultServices();
+
     for (const instance of this.outletInstances) {
       const label = instance.replace(/^outlet-(\d+)$/, 'Outlet $1');
       const svc =
@@ -1202,7 +1229,23 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
           return this.getPowerForOutlet(instance);
         });
 
+      svc.addOptionalCharacteristic(this.platform.Characteristic.StatusFault);
+      svc.getCharacteristic(this.platform.Characteristic.StatusFault)
+        .onGet(() => this.getStatusFault());
+
       this.outletServices.set(instance, svc);
+    }
+  }
+
+  private removeStaleDefaultServices(): void {
+    const staleServices = this.accessory.services.filter(service =>
+      service.subtype === undefined &&
+      (service.UUID === this.platform.Service.Outlet.UUID ||
+        service.UUID === this.platform.Service.Switch.UUID),
+    );
+
+    for (const service of staleServices) {
+      this.accessory.removeService(service);
     }
   }
 
@@ -1216,6 +1259,10 @@ export class MultiOutletAccessory extends BaseHubspaceAccessory {
   }
 
   protected pushCharacteristics(): void {
+    for (const [, svc] of this.outletServices) {
+      svc.updateCharacteristic(
+        this.platform.Characteristic.StatusFault, this.getStatusFault());
+    }
     if (this.offline) {
       for (const [, svc] of this.outletServices) {
         svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);

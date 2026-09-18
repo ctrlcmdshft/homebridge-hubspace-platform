@@ -82,6 +82,8 @@ export declare class FanAccessory extends BaseHubspaceAccessory {
     private getStoredFanSpeed;
     private getFanSpeed;
     private setFanSpeed;
+    private getAllowedFanSpeeds;
+    private getFanSpeedStep;
     private rememberCurrentFanSpeed;
     private rememberFanSpeed;
     private buildRememberedFanSpeedPatch;
@@ -120,6 +122,7 @@ export declare class MultiOutletAccessory extends BaseHubspaceAccessory {
     private outletServices;
     private get outletInstances();
     protected setupServices(): void;
+    private removeStaleDefaultServices;
     private getPowerForOutlet;
     private setPowerForOutlet;
     protected pushCharacteristics(): void;

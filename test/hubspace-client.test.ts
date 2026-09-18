@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import axios from 'axios';
 import { HubspaceClient } from '../src/hubspace-client';
-import { AuthTokens, KeycloakTokenResponse } from '../src/types';
+import { AuthTokens, FC, KeycloakTokenResponse } from '../src/types';
 
 // ── Module mocks (hoisted by ts-jest before imports) ──────────────────────────
 
@@ -178,6 +178,62 @@ describe('initialize — token refresh', () => {
     await client.initialize();
 
     expect(axiosMock.post).not.toHaveBeenCalled();
+  });
+});
+
+describe('getDevices — semantic categories', () => {
+  it('preserves advertised fan-speed values for accessory mapping', async () => {
+    fsMock.readFile.mockResolvedValue(JSON.stringify(validTokens()) as any);
+    axiosMock.get.mockResolvedValue({ data: usersMe });
+    const client = makeClient();
+    await client.initialize();
+    const http = (axiosMock.create as jest.Mock).mock.results[0].value;
+    http.get.mockResolvedValue({
+      data: [{
+        id: 'fan-1',
+        typeId: 'metadevice.device',
+        friendlyName: 'Master Bedroom',
+        description: {
+          device: { deviceClass: 'ceiling-fan' },
+          functions: [{
+            functionClass: FC.FAN_SPEED,
+            functionInstance: 'fan-speed',
+            type: 'category',
+            values: [
+              { name: 'fan-speed-9-100' },
+              { name: 'fan-speed-9-090' },
+              { name: 'fan-speed-9-080' },
+              { name: 'fan-speed-9-070' },
+              { name: 'fan-speed-9-060' },
+              { name: 'fan-speed-9-050' },
+              { name: 'fan-speed-9-040' },
+              { name: 'fan-speed-9-030' },
+              { name: 'fan-speed-9-020' },
+              { name: 'fan-speed-000' },
+            ],
+          }],
+        },
+        state: {
+          metadeviceId: 'fan-1',
+          values: [{
+            functionClass: FC.FAN_SPEED,
+            functionInstance: 'fan-speed',
+            value: 'fan-speed-9-050',
+          }],
+        },
+      }],
+    });
+
+    const devices = await client.getDevices();
+
+    expect(devices[0].fanSpeedCategories).toEqual({
+      'fan-speed': [
+        'fan-speed-9-100', 'fan-speed-9-090', 'fan-speed-9-080',
+        'fan-speed-9-070', 'fan-speed-9-060', 'fan-speed-9-050',
+        'fan-speed-9-040', 'fan-speed-9-030', 'fan-speed-9-020',
+        'fan-speed-000',
+      ],
+    });
   });
 });
 

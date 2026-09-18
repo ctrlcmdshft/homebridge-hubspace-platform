@@ -414,6 +414,21 @@ describe('percentToHubspeed (N-speed numeric format)', () => {
   });
 });
 
+describe('percentToHubspeed (advertised category values)', () => {
+  const allowed = [
+    'fan-speed-9-100', 'fan-speed-9-090', 'fan-speed-9-080',
+    'fan-speed-9-070', 'fan-speed-9-060', 'fan-speed-9-050',
+    'fan-speed-9-040', 'fan-speed-9-030', 'fan-speed-9-020',
+    'fan-speed-000',
+  ];
+
+  it('snaps to a value the device advertises', () => {
+    expect(percentToHubspeed(55, 'fan-speed-9-050', allowed)).toBe('fan-speed-9-050');
+    expect(percentToHubspeed(58, 'fan-speed-9-050', allowed)).toBe('fan-speed-9-060');
+    expect(percentToHubspeed(10, 'fan-speed-9-050', allowed)).toBe('fan-speed-9-020');
+  });
+});
+
 describe('percentToHubspeed (portable AC 3-speed semantic format)', () => {
   it('round-trips fan-speed-auto/low/high without being rewritten into the numeric format', () => {
     expect(percentToHubspeed(0,   'fan-speed-low')).toBe('fan-speed-auto');

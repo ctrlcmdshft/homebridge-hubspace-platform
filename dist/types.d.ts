@@ -85,6 +85,7 @@ export interface HubspaceDevice {
     model?: string;
     values: DeviceStateValue[];
     colorTempCategories?: Record<string, Array<string | number>>;
+    fanSpeedCategories?: Record<string, string[]>;
 }
 export interface HubspaceAccessoryContext {
     deviceId: string;

@@ -175,7 +175,23 @@ export function hubspeedToPercent(value: string): number {
 }
 
 /** Convert a HomeKit rotation-speed percentage to the Afero semantic value name. */
-export function percentToHubspeed(percent: number, currentValue: string): string {
+export function percentToHubspeed(
+  percent: number,
+  currentValue: string,
+  allowedValues?: string[],
+): string {
+  const allowedSpeeds = (allowedValues ?? [])
+    .map(value => ({ value, percent: hubspeedToPercent(value) }))
+    .filter(speed => speed.percent > 0 && speed.percent <= 100)
+    .sort((a, b) => a.percent - b.percent);
+  if (allowedSpeeds.length > 0) {
+    return allowedSpeeds.reduce((nearest, candidate) =>
+      Math.abs(candidate.percent - percent) < Math.abs(nearest.percent - percent)
+        ? candidate
+        : nearest,
+    allowedSpeeds[0]).value;
+  }
+
   const lower = currentValue.toLowerCase();
 
   // Portable AC 3-speed semantic format (checked before the generic

@@ -41,7 +41,7 @@ Support is capability-based, so nearby Hubspace models often work even if they a
 
 | Category | Examples / classes | HomeKit exposure | Verification |
 | --- | --- | --- | --- |
-| Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); `fan`, `ceiling-fan` | Fan on/off, speed, light kit controls, rotation direction when reported, optional Comfort Breeze and master-power switches | Hardware tested |
+| Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); Home Decorators Collection Tager 72 in. Fan (`N383C-MBK+V8`); `fan`, `ceiling-fan` | Fan on/off, device-specific speed steps including nine-speed fans, light kit controls, rotation direction when reported, optional Comfort Breeze and master-power switches | Hardware and community tested |
 | Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Hardware tested |
 | Split main/trim lights | Commercial Electric Smart Adjustable CCT/RGB Recessed Light Trim (NB36a6INRGB-W); `light` with `main` and `trim` instances | Separate Lightbulb services for each endpoint, such as main white/CCT light and trim RGB night light | Community tested |
 | Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Hardware tested |

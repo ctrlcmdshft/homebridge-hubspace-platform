@@ -2,6 +2,7 @@ import {
   DoorLockAccessory,
   LightAccessory,
   FanAccessory,
+  MultiOutletAccessory,
   OutletAccessory,
   PortableAcAccessory,
   LandscapeTransformerAccessory,
@@ -114,6 +115,10 @@ function makeMultiServiceAccessoryMock(platform: ReturnType<typeof makePlatform>
       }
       return svc;
     }),
+    removeService: jest.fn((svc: ReturnType<typeof makeSvcMock> & { subtype?: string }) => {
+      const index = accessory.services.indexOf(svc);
+      if (index >= 0) accessory.services.splice(index, 1);
+    }),
   };
   return accessory;
 }
@@ -129,11 +134,12 @@ function sv(
 function makeFanDevice(
   values: DeviceStateValue[],
   colorTempCategories?: Record<string, Array<string | number>>,
+  fanSpeedCategories?: Record<string, string[]>,
 ) {
   return {
     id: 'fan-1', allIds: ['fan-1'], typeId: 'metadevice.device',
     friendlyName: 'Ceiling Fan', deviceClass: 'ceiling-fan',
-    manufacturerName: 'Hampton Bay', model: 'test-model', values, colorTempCategories,
+    manufacturerName: 'Hampton Bay', model: 'test-model', values, colorTempCategories, fanSpeedCategories,
   };
 }
 
@@ -153,6 +159,14 @@ function makeOutletDevice(values: DeviceStateValue[]) {
     id: 'outlet-1', allIds: ['outlet-1'], typeId: 'metadevice.device',
     friendlyName: 'Smart Outlet', deviceClass: 'outlet',
     manufacturerName: 'Defiant', model: 'test-model', values,
+  };
+}
+
+function makePowerOutletDevice(values: DeviceStateValue[]) {
+  return {
+    id: 'power-outlet-1', allIds: ['power-outlet-1'], typeId: 'metadevice.device',
+    friendlyName: 'Surge wall tap', deviceClass: 'power-outlet',
+    manufacturerName: 'Commercial Electric', model: 'LA-12A-C', values,
   };
 }
 
@@ -234,6 +248,45 @@ describe('FanAccessory', () => {
       fanAcc.updateState([sv(FC.POWER, 'on', 'fan-power'), sv(FC.FAN_SPEED, 'fan-speed-100', 'fan-speed')]);
 
       expect(platform._svc.updateCharacteristic).toHaveBeenLastCalledWith('RotationSpeed', 100);
+    });
+
+    it('uses advertised semantic values for a 9-speed fan', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeAccessoryMock(platform);
+      const allowed = [
+        'fan-speed-9-100', 'fan-speed-9-090', 'fan-speed-9-080',
+        'fan-speed-9-070', 'fan-speed-9-060', 'fan-speed-9-050',
+        'fan-speed-9-040', 'fan-speed-9-030', 'fan-speed-9-020',
+        'fan-speed-000',
+      ];
+      const device = makeFanDevice([
+        sv(FC.POWER, 'on', 'fan-power'),
+        sv(FC.FAN_SPEED, 'fan-speed-9-050', 'fan-speed'),
+      ], undefined, { 'fan-speed': allowed });
+      new FanAccessory(platform as any, acc as any, device as any);
+      const onSetFanSpeed: (v: number) => void =
+        (platform._svc._char.onSet as jest.Mock).mock.calls[1][0];
+
+      expect(platform._svc._char.setProps).toHaveBeenCalledWith({
+        minValue: 0,
+        maxValue: 100,
+        minStep: 10,
+      });
+
+      onSetFanSpeed(55);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'fan-1',
+        [expect.objectContaining({
+          functionClass: FC.FAN_SPEED,
+          functionInstance: 'fan-speed',
+          value: 'fan-speed-9-050',
+        })],
+      );
     });
 
   });
@@ -1029,6 +1082,71 @@ describe('OutletAccessory', () => {
         StatusFault, StatusFault.NO_FAULT,
       );
     });
+  });
+});
+
+// ── MultiOutletAccessory ─────────────────────────────────────────────────────
+
+describe('MultiOutletAccessory', () => {
+  const surgeWallTapValues = [
+    sv(FC.TOGGLE, 'on', 'outlet-1'),
+    sv(FC.TOGGLE, 'on', 'outlet-2'),
+    sv(FC.TOGGLE, 'on', 'outlet-3'),
+    sv(FC.TOGGLE, 'on', 'outlet-4'),
+    sv(FC.POWER, 'on'),
+    sv(FC.AVAILABLE, true),
+  ];
+
+  it('creates one Outlet service per controllable outlet instance', () => {
+    const platform = makePlatform();
+    const acc = makeMultiServiceAccessoryMock(platform);
+    const device = makePowerOutletDevice(surgeWallTapValues);
+
+    new MultiOutletAccessory(platform as any, acc as any, device as any);
+
+    expect(acc.addService).toHaveBeenCalledWith('Outlet', 'Outlet 1', 'outlet-1');
+    expect(acc.addService).toHaveBeenCalledWith('Outlet', 'Outlet 2', 'outlet-2');
+    expect(acc.addService).toHaveBeenCalledWith('Outlet', 'Outlet 3', 'outlet-3');
+    expect(acc.addService).toHaveBeenCalledWith('Outlet', 'Outlet 4', 'outlet-4');
+    expect(acc.services.map(s => s.subtype)).toEqual(['outlet-1', 'outlet-2', 'outlet-3', 'outlet-4']);
+  });
+
+  it('removes a stale default Outlet service left from a previous cached accessory shape', () => {
+    const platform = makePlatform();
+    const acc = makeMultiServiceAccessoryMock(platform);
+    const staleSvc = Object.assign(makeSvcMock(), {
+      UUID: (platform.Service.Outlet as any).UUID,
+      subtype: undefined,
+    });
+    acc.services.push(staleSvc);
+    const device = makePowerOutletDevice(surgeWallTapValues);
+
+    new MultiOutletAccessory(platform as any, acc as any, device as any);
+
+    expect(acc.removeService).toHaveBeenCalledWith(staleSvc);
+    expect(acc.services).not.toContain(staleSvc);
+    expect(acc.services.map(s => s.subtype)).toEqual(['outlet-1', 'outlet-2', 'outlet-3', 'outlet-4']);
+  });
+
+  it('pushes StatusFault to each outlet service when available changes', () => {
+    const platform = makePlatform();
+    const acc = makeMultiServiceAccessoryMock(platform);
+    const device = makePowerOutletDevice(surgeWallTapValues);
+    const outletAcc = new MultiOutletAccessory(platform as any, acc as any, device as any);
+
+    outletAcc.updateState([
+      sv(FC.TOGGLE, 'on', 'outlet-1'),
+      sv(FC.TOGGLE, 'on', 'outlet-2'),
+      sv(FC.TOGGLE, 'on', 'outlet-3'),
+      sv(FC.TOGGLE, 'on', 'outlet-4'),
+      sv(FC.AVAILABLE, false),
+    ]);
+
+    for (const svc of acc.services) {
+      expect(svc.updateCharacteristic).toHaveBeenCalledWith(
+        StatusFault, StatusFault.GENERAL_FAULT,
+      );
+    }
   });
 });
 

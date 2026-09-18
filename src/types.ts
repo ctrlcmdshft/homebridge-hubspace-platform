@@ -117,6 +117,8 @@ export interface HubspaceDevice {
   values: DeviceStateValue[];
   /** Discrete color-temperature category names advertised by semantics2, keyed by functionInstance. */
   colorTempCategories?: Record<string, Array<string | number>>;
+  /** Discrete fan-speed category names advertised by semantics2, keyed by functionInstance. */
+  fanSpeedCategories?: Record<string, string[]>;
 }
 
 // ─── Accessory context (persisted in PlatformAccessory.context) ───────────────

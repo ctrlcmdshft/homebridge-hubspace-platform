@@ -185,7 +185,16 @@ function hubspeedToPercent(value) {
         return n;
     return 50;
 }
-function percentToHubspeed(percent, currentValue) {
+function percentToHubspeed(percent, currentValue, allowedValues) {
+    const allowedSpeeds = (allowedValues ?? [])
+        .map(value => ({ value, percent: hubspeedToPercent(value) }))
+        .filter(speed => speed.percent > 0 && speed.percent <= 100)
+        .sort((a, b) => a.percent - b.percent);
+    if (allowedSpeeds.length > 0) {
+        return allowedSpeeds.reduce((nearest, candidate) => Math.abs(candidate.percent - percent) < Math.abs(nearest.percent - percent)
+            ? candidate
+            : nearest, allowedSpeeds[0]).value;
+    }
     const lower = currentValue.toLowerCase();
     if (lower === 'fan-speed-auto' || lower === 'fan-speed-low' || lower === 'fan-speed-high') {
         if (percent <= 33)

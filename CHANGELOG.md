@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.7] - 2026-09-18
+
+This release improves multi-outlet accessory migration and adds support for fans that advertise device-specific speed categories, including the nine-speed Home Decorators Collection Tager fan.
+
+### Fixed
+
+- **Multi-outlet accessory migration** — multi-outlet surge taps now remove stale cached single-outlet services while keeping every controllable outlet grouped under one HomeKit accessory.
+- **Multi-outlet availability reporting** — each outlet service now reports its fault status when the device goes offline or returns online.
+- **Device-specific fan speeds** — ceiling fans now use the exact speed categories advertised by Hubspace and expose the matching HomeKit slider step. This prevents unsupported values such as `fan-speed-9-055` from being sent to fans that accept only specific speed categories.
+
+### Thanks
+
+- Thanks to @dsimpson3030 for reporting and testing nine-speed support with the Home Decorators Collection Tager `N383C-MBK+V8` ceiling fan in issue #38.
+
+---
+
 ## [2.1.6] - 2026-08-21
 
 ### Changed

@@ -29,6 +29,7 @@ export declare class HubspaceClient {
     initialize(): Promise<void>;
     getDevices(): Promise<HubspaceDevice[]>;
     private extractColorTempCategories;
+    private extractFanSpeedCategories;
     getDeviceState(deviceIds: string[]): Promise<DeviceStateValue[]>;
     setDeviceState(deviceId: string, values: Partial<DeviceStateValue>[]): Promise<void>;
     private resolveAccountId;

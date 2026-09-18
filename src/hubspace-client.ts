@@ -218,6 +218,7 @@ export class HubspaceClient {
         model: raw.description?.device?.model,
         values: raw.state?.values ?? [],
         colorTempCategories: this.extractColorTempCategories(raw),
+        fanSpeedCategories: this.extractFanSpeedCategories(raw),
       });
     }
 
@@ -250,6 +251,10 @@ export class HubspaceClient {
             ...(secondary.colorTempCategories ?? {}),
             ...(primary.colorTempCategories ?? {}),
           },
+          fanSpeedCategories: {
+            ...(secondary.fanSpeedCategories ?? {}),
+            ...(primary.fanSpeedCategories ?? {}),
+          },
         };
         deduped.set(key, merged);
       }
@@ -269,6 +274,23 @@ export class HubspaceClient {
       const values = (fn.values ?? [])
         .map(value => value.name)
         .filter((value): value is string => value !== undefined && parseKelvin(value) !== null);
+      if (values.length === 0) continue;
+
+      categories[fn.functionInstance ?? 'undefined'] = values;
+    }
+
+    return Object.keys(categories).length > 0 ? categories : undefined;
+  }
+
+  private extractFanSpeedCategories(raw: HubspaceMetadeviceRaw): Record<string, string[]> | undefined {
+    const categories: Record<string, string[]> = {};
+
+    for (const fn of raw.description?.functions ?? []) {
+      if (fn.functionClass !== FC.FAN_SPEED || fn.type !== 'category') continue;
+
+      const values = (fn.values ?? [])
+        .map(value => value.name)
+        .filter((value): value is string => value !== undefined);
       if (values.length === 0) continue;
 
       categories[fn.functionInstance ?? 'undefined'] = values;
