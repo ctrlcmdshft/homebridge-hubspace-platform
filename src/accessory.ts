@@ -27,6 +27,24 @@ type ColorTempCategory = {
   value: string | number;
 };
 
+const GRAND_DUCHESS_BRIGHTNESS_PRESETS = [
+  { value: 'low', brightness: 33 },
+  { value: 'medium', brightness: 66 },
+  { value: 'high', brightness: 100 },
+] as const;
+
+const GRAND_DUCHESS_EFFECTS = [
+  { value: 'steady-warm-white-mcu', label: 'Steady Warm White' },
+  { value: 'steady-multi-mcu', label: 'Steady Multicolor' },
+  { value: 'twinkle-warm-white-mcu', label: 'Twinkle Warm White' },
+  { value: 'slow-fade-warm-white-mcu', label: 'Slow Fade Warm White' },
+  { value: 'slow-fade-multi-mcu', label: 'Slow Fade Multicolor' },
+  { value: 'slow-color-variable-mcu', label: 'Slow Color Variable' },
+  { value: 'fast-flip-mcu', label: 'Fast Flip' },
+  { value: 'slow-flip-mcu', label: 'Slow Flip' },
+  { value: 'slow-fade-mcu', label: 'Slow Fade' },
+] as const;
+
 // ─── Base accessory ───────────────────────────────────────────────────────────
 
 export abstract class BaseHubspaceAccessory {
@@ -387,7 +405,8 @@ export class LightAccessory extends BaseHubspaceAccessory {
         .onSet((v) => { void this.setPower(instance, v as boolean); });
 
       // Brightness.
-      if (this.findLightValue(FC.BRIGHTNESS, instance)) {
+      if (this.findLightValue(FC.BRIGHTNESS, instance) ||
+          this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)) {
         svc.getCharacteristic(this.platform.Characteristic.Brightness)
           .onGet(() => {
             if (this.offline) throw this.noResponse;
@@ -431,6 +450,40 @@ export class LightAccessory extends BaseHubspaceAccessory {
         svc.getCharacteristic(this.platform.Characteristic.StatusFault)
           .onGet(() => this.getStatusFault());
       }
+    }
+
+    this.setupGrandDuchessEffectSwitches();
+  }
+
+  private setupGrandDuchessEffectSwitches(): void {
+    if (!this.findValue(FC.POWER) ||
+        !this.findValue(FC.BRIGHTNESS_PRESETS) ||
+        !this.findValue(FC.COLOR_SEQUENCE) ||
+        !this.findValue(FC.COLOR_MODE)) return;
+
+    for (const effect of GRAND_DUCHESS_EFFECTS) {
+      const subtype = `effect-${effect.value}`;
+      const existing = this.accessory.services.find(
+        (service: { subtype?: string }) => service.subtype === subtype,
+      );
+      const service = (existing as Service | undefined) ?? this.accessory.addService(
+        this.platform.Service.Switch,
+        `${this.device.friendlyName} ${effect.label}`,
+        subtype,
+      );
+
+      service.getCharacteristic(this.platform.Characteristic.On)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getSelectedEffect() === effect.value;
+        })
+        .onSet((value) => {
+          if (value === true) {
+            this.setEffect(effect.value);
+          } else {
+            this.pushEffectCharacteristics();
+          }
+        });
     }
   }
 
@@ -481,7 +534,18 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
   private getBrightness(instance: string | undefined): CharacteristicValue {
     const v = this.findLightValue(FC.BRIGHTNESS, instance);
-    return v ? Math.round(Number(v.value)) : 100;
+    if (v) return Math.round(Number(v.value));
+
+    const preset = this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)?.value;
+    const presetMapping = GRAND_DUCHESS_BRIGHTNESS_PRESETS.find(
+      item => item.value === String(preset).toLowerCase(),
+    );
+    return presetMapping?.brightness ?? 100;
+  }
+
+  private getSelectedEffect(): string | undefined {
+    const value = this.findValue(FC.COLOR_SEQUENCE, 'preset')?.value;
+    return typeof value === 'string' ? value : undefined;
   }
 
   private getColorTemp(instance: string | undefined): CharacteristicValue {
@@ -519,8 +583,16 @@ export class LightAccessory extends BaseHubspaceAccessory {
     if (existingTimer) clearTimeout(existingTimer);
     this.brightnessTimers.set(instance, setTimeout(async () => {
       const rounded = Math.round(value);
+      const currentBrightness = this.findLightValue(FC.BRIGHTNESS, instance);
+      const brightnessPatch = currentBrightness
+        ? this.buildLightPatch(FC.BRIGHTNESS, rounded, instance)
+        : this.buildLightPatch(
+          FC.BRIGHTNESS_PRESETS,
+          this.brightnessToPreset(rounded),
+          instance,
+        );
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildLightPatch(FC.BRIGHTNESS, rounded, instance),
+        brightnessPatch,
       ];
       if (rounded > 0 && !this.getPower(instance)) {
         patches.push(this.buildLightPatch(FC.POWER, 'on', instance));
@@ -528,6 +600,31 @@ export class LightAccessory extends BaseHubspaceAccessory {
       this.setDeviceValues(patches);
       this.brightnessTimers.delete(instance);
     }, 300));
+  }
+
+  private brightnessToPreset(value: number): string {
+    if (value <= 33) return 'low';
+    if (value <= 66) return 'medium';
+    return 'high';
+  }
+
+  private setEffect(effect: string): void {
+    this.setDeviceValues([
+      this.buildPatch(FC.COLOR_SEQUENCE, effect, 'preset'),
+      this.buildPatch(FC.COLOR_MODE, 'sequence'),
+    ]);
+  }
+
+  private pushEffectCharacteristics(): void {
+    for (const effect of GRAND_DUCHESS_EFFECTS) {
+      const service = this.accessory.services.find(
+        (candidate: { subtype?: string }) => candidate.subtype === `effect-${effect.value}`,
+      ) as Service | undefined;
+      service?.updateCharacteristic(
+        this.platform.Characteristic.On,
+        this.offline ? this.noResponse : this.getSelectedEffect() === effect.value,
+      );
+    }
   }
 
   private readonly colorTempTimers = new Map<string | undefined, ReturnType<typeof setTimeout>>();
@@ -597,12 +694,14 @@ export class LightAccessory extends BaseHubspaceAccessory {
       for (const [, svc] of this.svcs) {
         svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
       }
+      this.pushEffectCharacteristics();
       return;
     }
     for (const [instance, svc] of this.svcs) {
       svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower(instance));
 
-      if (this.findLightValue(FC.BRIGHTNESS, instance)) {
+      if (this.findLightValue(FC.BRIGHTNESS, instance) ||
+          this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)) {
         svc.updateCharacteristic(
           this.platform.Characteristic.Brightness, this.getBrightness(instance));
       }
@@ -616,6 +715,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
           this.platform.Characteristic.Saturation, this.getSaturation(instance));
       }
     }
+    this.pushEffectCharacteristics();
   }
 }
 
@@ -719,7 +819,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
           .onSet((v) => { void this.setLightColorTemp(v as number); });
       }
     }
-
   }
 
   // ── Fan getters / setters ─────────────────────────────────────────────────────

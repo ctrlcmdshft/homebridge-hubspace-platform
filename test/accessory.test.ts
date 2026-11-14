@@ -736,6 +736,132 @@ describe('LightAccessory', () => {
 
       expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('Brightness', 75);
     });
+
+    it.each([
+      ['low', 33],
+      ['medium', 66],
+      ['high', 100],
+    ])('maps preset %s to HomeKit brightness %i', (preset, expected) => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS_PRESETS, preset),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'steady-warm-white-mcu', 'preset'),
+      ]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+      lightAcc.updateState(device.values);
+
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      expect(lightService.updateCharacteristic).toHaveBeenCalledWith('Brightness', expected);
+    });
+
+    it.each([
+      [20, 'low'],
+      [50, 'medium'],
+      [80, 'high'],
+    ])('writes brightness %i to the %s preset', async (brightness, preset) => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS_PRESETS, 'low'),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'steady-warm-white-mcu', 'preset'),
+      ]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      const onSetBrightness = (lightService._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetBrightness(brightness);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.BRIGHTNESS_PRESETS, value: preset })],
+      );
+    });
+  });
+
+  describe('Grand Duchess effects', () => {
+    it('exposes all nine mutually exclusive effects and reflects Hubspace updates', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS_PRESETS, 'high'),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'steady-warm-white-mcu', 'preset'),
+      ]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+
+      const effectServices = acc.services.filter(service => service.subtype?.startsWith('effect-'));
+      expect(effectServices).toHaveLength(9);
+      expect(effectServices.map(service => service.subtype).sort()).toEqual([
+        'effect-fast-flip-mcu',
+        'effect-slow-fade-mcu',
+        'effect-slow-fade-multi-mcu',
+        'effect-slow-fade-warm-white-mcu',
+        'effect-slow-flip-mcu',
+        'effect-slow-color-variable-mcu',
+        'effect-steady-multi-mcu',
+        'effect-steady-warm-white-mcu',
+        'effect-twinkle-warm-white-mcu',
+      ].sort());
+
+      lightAcc.updateState([
+        ...device.values.filter(value => value.functionClass !== FC.COLOR_SEQUENCE),
+        sv(FC.COLOR_SEQUENCE, 'slow-flip-mcu', 'preset'),
+      ]);
+
+      for (const service of effectServices) {
+        expect(service.updateCharacteristic).toHaveBeenCalledWith(
+          'On',
+          service.subtype === 'effect-slow-flip-mcu',
+        );
+      }
+    });
+
+    it('writes the selected effect and sequence mode to Hubspace', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS_PRESETS, 'high'),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'steady-warm-white-mcu', 'preset'),
+      ]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const fastFlip = acc.services.find(service => service.subtype === 'effect-fast-flip-mcu')!;
+      const onSet = (fastFlip._char.onSet as jest.Mock).mock.calls[0][0];
+
+      onSet(true);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        expect.arrayContaining([
+          expect.objectContaining({
+            functionClass: FC.COLOR_SEQUENCE,
+            functionInstance: 'preset',
+            value: 'fast-flip-mcu',
+          }),
+          expect.objectContaining({
+            functionClass: FC.COLOR_MODE,
+            value: 'sequence',
+          }),
+        ]),
+      );
+    });
   });
 
   describe('color temperature', () => {
