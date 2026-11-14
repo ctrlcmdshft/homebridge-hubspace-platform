@@ -43,6 +43,7 @@ Support is capability-based, so nearby Hubspace models often work even if they a
 | --- | --- | --- | --- |
 | Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); Home Decorators Collection Tager 72 in. Fan (`N383C-MBK+V8`); `fan`, `ceiling-fan` | Fan on/off, device-specific speed steps including nine-speed fans, light kit controls, rotation direction when reported, optional Comfort Breeze and master-power switches | Hardware and community tested |
 | Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Hardware tested |
+| Christmas trees | Home Decorators Collection Smart Grand Duchess Tree; `light` with `brightness-presets` and `color-sequence` | On/off, three-level brightness, and nine effect switches | Capability data captured |
 | Split main/trim lights | Commercial Electric Smart Adjustable CCT/RGB Recessed Light Trim (NB36a6INRGB-W); `light` with `main` and `trim` instances | Separate Lightbulb services for each endpoint, such as main white/CCT light and trim RGB night light | Community tested |
 | Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Hardware tested |
 | Switches | Hubspace Smart Switch; `switch` | Switch on/off | Implemented, untested |
@@ -59,9 +60,13 @@ Device-dependent controls only appear when the Hubspace API reports the matching
 | Master-power switch | Separate `power[primary]` and `power[fan-power]`, plus `exposeMasterPowerSwitch: true` |
 | RGB color | `color-rgb` |
 | Color temperature | `color-temperature` |
+| Christmas tree brightness presets | `brightness-presets` |
+| Christmas tree effects | `color-sequence[preset]` and `color-mode` |
 | Split light endpoints | Multiple non-global light instances such as `power[main]`, `brightness[main]`, `power[trim]`, and `color-rgb[trim]` |
 
 All EcoSmart/Hubspace A19 bulbs should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only.
+
+Grand Duchess brightness presets are represented as 33%, 66%, and 100% in HomeKit. Selecting an effect changes the active `color-sequence[preset]`; the effect switches are mutually exclusive and reflect changes reported by Hubspace.
 
 Smart switches are implemented based on the Afero API but have not yet been verified with real hardware. If you own one and can confirm it works, or find a bug, please open an issue.
 

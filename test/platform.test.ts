@@ -47,7 +47,10 @@ function makeApi() {
       this.UUID = uuid;
     }
     getService = jest.fn(() => this.svc);
-    addService = jest.fn(() => this.svc);
+    addService = jest.fn(() => {
+      this.services.push(this.svc);
+      return this.svc;
+    });
   }
 
   const api = {
@@ -105,7 +108,7 @@ function makeDevice(overrides: Partial<HubspaceDevice>): HubspaceDevice {
 
 function makePlatform(config: Partial<PlatformConfig> = {}) {
   const log = makeLog();
-  const { api, registerPlatformAccessories } = makeApi();
+  const { api, registerPlatformAccessories, updatePlatformAccessories } = makeApi();
   const fullConfig = {
     platform: 'HubspacePlatform',
     name: 'Hubspace Platform',
@@ -115,7 +118,7 @@ function makePlatform(config: Partial<PlatformConfig> = {}) {
   } as PlatformConfig;
 
   const platform = new HubspacePlatform(log, fullConfig, api);
-  return { platform, log, registerPlatformAccessories };
+  return { platform, log, registerPlatformAccessories, updatePlatformAccessories };
 }
 
 function makeHandler(id: string, friendlyName: string) {
@@ -140,6 +143,34 @@ async function discover(platform: HubspacePlatform, devices: HubspaceDevice[]) {
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
+
+describe('HubspacePlatform cached accessory updates', () => {
+  it('persists newly added device services after restoring a cached accessory', async () => {
+    const { platform, updatePlatformAccessories } = makePlatform();
+    const cached = new (platform.api as any).platformAccessory('Xmas tree', 'uuid-device-id');
+    updatePlatformAccessories.mockImplementation((accessories: any[]) => {
+      expect(accessories[0].services).toHaveLength(9);
+    });
+    platform.configureAccessory(cached);
+
+    await discover(platform, [
+      makeDevice({
+        id: 'device-id',
+        friendlyName: 'Xmas tree',
+        values: [
+          { functionClass: 'power', functionInstance: undefined, value: 'on' },
+          { functionClass: 'brightness-presets', functionInstance: undefined, value: 'low' },
+          { functionClass: 'color-mode', functionInstance: undefined, value: 'sequence' },
+          { functionClass: 'color-sequence', functionInstance: 'preset', value: 'steady-warm-white-mcu' },
+        ],
+      }),
+    ]);
+
+    expect(cached.addService).toHaveBeenCalledTimes(9);
+    expect(updatePlatformAccessories).toHaveBeenCalledWith([cached]);
+    expect(cached.services).toHaveLength(9);
+  });
+});
 
 describe('HubspacePlatform polling logs', () => {
   it('logs poll failures with the friendly device name and ID', async () => {
