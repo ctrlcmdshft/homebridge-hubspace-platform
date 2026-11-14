@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Home Decorators Smart Grand Duchess Tree** — expose power, three-level brightness, and selectable lighting effects in HomeKit.
+
+---
+
 ## [2.1.7] - 2026-09-18
 
 This release improves multi-outlet accessory migration and adds support for fans that advertise device-specific speed categories, including the nine-speed Home Decorators Collection Tager fan.
