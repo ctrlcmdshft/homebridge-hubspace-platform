@@ -620,10 +620,14 @@ export class LightAccessory extends BaseHubspaceAccessory {
       const service = this.accessory.services.find(
         (candidate: { subtype?: string }) => candidate.subtype === `effect-${effect.value}`,
       ) as Service | undefined;
-      service?.updateCharacteristic(
-        this.platform.Characteristic.On,
-        this.offline ? this.noResponse : this.getSelectedEffect() === effect.value,
-      );
+      if (this.offline) {
+        service?.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      } else {
+        service?.updateCharacteristic(
+          this.platform.Characteristic.On,
+          this.getSelectedEffect() === effect.value,
+        );
+      }
     }
   }
 
