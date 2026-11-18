@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- **Accessory information** — devices that report a comma-separated list of model numbers (the Grand Duchess tree) now show the first model instead of triggering HAP's "exceeded max length of 64" warning, and all info strings are capped at HomeKit's 64-character limit.
 - **Cached accessories** — restored accessories are now persisted after their handler sets up services, so services added for newly supported capabilities are kept.
 
 ---

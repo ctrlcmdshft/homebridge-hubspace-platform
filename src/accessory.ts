@@ -115,18 +115,24 @@ export abstract class BaseHubspaceAccessory {
     const info = this.accessory.getService(this.platform.Service.AccessoryInformation)
       ?? this.accessory.addService(this.platform.Service.AccessoryInformation);
 
+    // HAP rejects (and truncates with a warning) info strings over 64 chars.
+    const MAX_INFO_LEN = 64;
     const safeName = (s: string | undefined, fallback: string): string =>
-      (s?.trim().length ?? 0) > 1 ? s!.trim() : fallback;
+      ((s?.trim().length ?? 0) > 1 ? s!.trim() : fallback).slice(0, MAX_INFO_LEN);
+
+    // Some products report every SKU in the family as one comma-separated
+    // model string (e.g. the Grand Duchess tree's "26LE31013, 26LE31014, …").
+    const model = this.device.model?.split(',')[0];
 
     info
       .setCharacteristic(this.platform.Characteristic.Manufacturer,
         safeName(this.device.manufacturerName, 'Hubspace'))
       .setCharacteristic(this.platform.Characteristic.Model,
-        safeName(this.device.model, this.device.typeId))
+        safeName(model, this.device.typeId))
       .setCharacteristic(this.platform.Characteristic.SerialNumber,
-        this.device.id)
+        safeName(this.device.id, this.device.id))
       .setCharacteristic(this.platform.Characteristic.Name,
-        this.device.friendlyName);
+        safeName(this.device.friendlyName, this.device.friendlyName));
   }
 
   // ── State map ─────────────────────────────────────────────────────────────────

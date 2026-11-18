@@ -1055,6 +1055,34 @@ describe('LightAccessory', () => {
     });
   });
 
+  describe('accessory information', () => {
+    it('uses the first model of a comma-separated SKU list so HomeKit accepts it', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = {
+        ...makeLightDevice(grandDuchessValues()),
+        friendlyName: 'Grand Duchess Christmas Tree',
+        model: Array.from({ length: 9 }, (_, i) => `26LE310${13 + i}`).join(', '),
+      };
+      new LightAccessory(platform as any, acc as any, device as any);
+      const info = acc.getService.mock.results[0].value as ReturnType<typeof makeSvcMock>;
+
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Model', '26LE31013');
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Name', 'Grand Duchess Christmas Tree');
+    });
+
+    it('caps accessory information strings at 64 characters', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = { ...makeLightDevice([sv(FC.POWER, 'on')]), model: 'M'.repeat(80), manufacturerName: 'H'.repeat(80) };
+      new LightAccessory(platform as any, acc as any, device as any);
+      const info = acc.getService.mock.results[0].value as ReturnType<typeof makeSvcMock>;
+
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Model', 'M'.repeat(64));
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Manufacturer', 'H'.repeat(64));
+    });
+  });
+
   describe('color temperature', () => {
     it('parses K-suffixed Hubspace color-temperature values', () => {
       const platform = makePlatform();

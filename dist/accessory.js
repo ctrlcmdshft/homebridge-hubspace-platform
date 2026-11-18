@@ -59,12 +59,14 @@ class BaseHubspaceAccessory {
     setupAccessoryInfo() {
         const info = this.accessory.getService(this.platform.Service.AccessoryInformation)
             ?? this.accessory.addService(this.platform.Service.AccessoryInformation);
-        const safeName = (s, fallback) => (s?.trim().length ?? 0) > 1 ? s.trim() : fallback;
+        const MAX_INFO_LEN = 64;
+        const safeName = (s, fallback) => ((s?.trim().length ?? 0) > 1 ? s.trim() : fallback).slice(0, MAX_INFO_LEN);
+        const model = this.device.model?.split(',')[0];
         info
             .setCharacteristic(this.platform.Characteristic.Manufacturer, safeName(this.device.manufacturerName, 'Hubspace'))
-            .setCharacteristic(this.platform.Characteristic.Model, safeName(this.device.model, this.device.typeId))
-            .setCharacteristic(this.platform.Characteristic.SerialNumber, this.device.id)
-            .setCharacteristic(this.platform.Characteristic.Name, this.device.friendlyName);
+            .setCharacteristic(this.platform.Characteristic.Model, safeName(model, this.device.typeId))
+            .setCharacteristic(this.platform.Characteristic.SerialNumber, safeName(this.device.id, this.device.id))
+            .setCharacteristic(this.platform.Characteristic.Name, safeName(this.device.friendlyName, this.device.friendlyName));
     }
     rebuildStateMap(values) {
         this.stateMap.clear();
