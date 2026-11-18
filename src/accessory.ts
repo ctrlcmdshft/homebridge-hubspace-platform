@@ -27,6 +27,57 @@ type ColorTempCategory = {
   value: string | number;
 };
 
+type EffectOption = {
+  value: string;
+  label: string;
+};
+
+/**
+ * HomeKit brightness shown for each `brightness-presets` level. These match the
+ * Grand Duchess tree's semantic values (low 1…33, medium 34…66, high 67…100).
+ */
+const BRIGHTNESS_PRESET_LEVELS: Record<string, number> = {
+  low: 33,
+  medium: 66,
+  high: 100,
+};
+
+/** `color-sequence` functionInstance holding on-device effect presets. */
+const EFFECT_INSTANCE = 'preset';
+/** Service subtype prefix for effect switches. */
+const EFFECT_SUBTYPE_PREFIX = 'effect-';
+
+/**
+ * Friendly labels for known Grand Duchess tree sequences, in the order the
+ * tree's remote lists them. Effects the device advertises that aren't listed
+ * here still get exposed with a label derived from their ID.
+ */
+const KNOWN_EFFECTS: readonly EffectOption[] = [
+  { value: 'steady-warm-white-mcu', label: 'Steady Warm White' },
+  { value: 'steady-multi-mcu', label: 'Steady Multicolor' },
+  { value: 'twinkle-warm-white-mcu', label: 'Twinkle Warm White' },
+  { value: 'slow-fade-warm-white-mcu', label: 'Slow Fade Warm White' },
+  { value: 'slow-fade-multi-mcu', label: 'Slow Fade Multicolor' },
+  { value: 'slow-color-variable-mcu', label: 'Slow Color Variable' },
+  { value: 'fast-flip-mcu', label: 'Fast Flip' },
+  { value: 'slow-flip-mcu', label: 'Slow Flip' },
+  { value: 'slow-fade-mcu', label: 'Slow Fade' },
+];
+
+/** Effects never exposed as switches (the store-display demo loop). */
+const HIDDEN_EFFECTS = new Set(['demo-mcu']);
+
+function effectLabel(value: string): string {
+  const known = KNOWN_EFFECTS.find(effect => effect.value === value);
+  if (known) return known.label;
+  return value
+    .replace(/-mcu$/, '')
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 // ─── Base accessory ───────────────────────────────────────────────────────────
 
 export abstract class BaseHubspaceAccessory {
@@ -64,18 +115,24 @@ export abstract class BaseHubspaceAccessory {
     const info = this.accessory.getService(this.platform.Service.AccessoryInformation)
       ?? this.accessory.addService(this.platform.Service.AccessoryInformation);
 
+    // HAP rejects (and truncates with a warning) info strings over 64 chars.
+    const MAX_INFO_LEN = 64;
     const safeName = (s: string | undefined, fallback: string): string =>
-      (s?.trim().length ?? 0) > 1 ? s!.trim() : fallback;
+      ((s?.trim().length ?? 0) > 1 ? s!.trim() : fallback).slice(0, MAX_INFO_LEN);
+
+    // Some products report every SKU in the family as one comma-separated
+    // model string (e.g. the Grand Duchess tree's "26LE31013, 26LE31014, …").
+    const model = this.device.model?.split(',')[0];
 
     info
       .setCharacteristic(this.platform.Characteristic.Manufacturer,
         safeName(this.device.manufacturerName, 'Hubspace'))
       .setCharacteristic(this.platform.Characteristic.Model,
-        safeName(this.device.model, this.device.typeId))
+        safeName(model, this.device.typeId))
       .setCharacteristic(this.platform.Characteristic.SerialNumber,
-        this.device.id)
+        safeName(this.device.id, this.device.id))
       .setCharacteristic(this.platform.Characteristic.Name,
-        this.device.friendlyName);
+        safeName(this.device.friendlyName, this.device.friendlyName));
   }
 
   // ── State map ─────────────────────────────────────────────────────────────────
@@ -345,6 +402,9 @@ export abstract class BaseHubspaceAccessory {
 
 export class LightAccessory extends BaseHubspaceAccessory {
   declare private svcs: Map<string | undefined, Service>;
+  /** Effects exposed as switches (empty unless exposeEffectSwitches is on and supported). */
+  declare private effects: EffectOption[];
+  declare private effectSvcs: Map<string, Service>;
   /** Tracks pending HomeKit hue/saturation by light endpoint so they can be combined. */
   private readonly pendingHue = new Map<string | undefined, number>();
   private readonly pendingSat = new Map<string | undefined, number>();
@@ -387,7 +447,8 @@ export class LightAccessory extends BaseHubspaceAccessory {
         .onSet((v) => { void this.setPower(instance, v as boolean); });
 
       // Brightness.
-      if (this.findLightValue(FC.BRIGHTNESS, instance)) {
+      if (this.findLightValue(FC.BRIGHTNESS, instance) ||
+          this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)) {
         svc.getCharacteristic(this.platform.Characteristic.Brightness)
           .onGet(() => {
             if (this.offline) throw this.noResponse;
@@ -431,6 +492,100 @@ export class LightAccessory extends BaseHubspaceAccessory {
         svc.getCharacteristic(this.platform.Characteristic.StatusFault)
           .onGet(() => this.getStatusFault());
       }
+    }
+
+    this.setupEffectSwitches(instances.length === 1 ? this.svcs.get(instances[0]) : undefined);
+  }
+
+  /**
+   * Effects to expose as switches. Only lights with on-device effect presets
+   * (`color-sequence[preset]`) and `brightness-presets` qualify — the Grand
+   * Duchess tree signature. Other lights with `color-sequence` (e.g. string
+   * lights) advertise dozens of presets and haven't been tested with this UI.
+   */
+  private availableEffects(): EffectOption[] {
+    if (!this.findValue(FC.COLOR_SEQUENCE, EFFECT_INSTANCE) || !this.findValue(FC.BRIGHTNESS_PRESETS)) {
+      return [];
+    }
+
+    const advertised = this.device.colorSequenceCategories?.[EFFECT_INSTANCE];
+    const names = advertised && advertised.length > 0
+      ? advertised
+      : KNOWN_EFFECTS.map(effect => effect.value);
+    const order = new Map(KNOWN_EFFECTS.map((effect, index) => [effect.value, index]));
+
+    return [...new Set(names)]
+      .filter(name => !HIDDEN_EFFECTS.has(name))
+      // Known effects first in remote-control order; unknown ones keep the
+      // device's advertised order (Array.prototype.sort is stable).
+      .sort((a, b) => (order.get(a) ?? order.size) - (order.get(b) ?? order.size))
+      .map(value => ({ value, label: effectLabel(value) }));
+  }
+
+  private setupEffectSwitches(lightSvc: Service | undefined): void {
+    this.effectSvcs = new Map();
+    this.effects = this.platform.exposeEffectSwitches ? this.availableEffects() : [];
+
+    // Drop switches the user disabled or the device no longer advertises. When
+    // there is no state at all (cached fallback while the API is unreachable),
+    // keep existing switches so an outage doesn't strip them from HomeKit.
+    if (!this.platform.exposeEffectSwitches || this.stateMap.size > 0) {
+      this.removeStaleEffectSwitches();
+    }
+    if (this.effects.length === 0) return;
+
+    // Keep the light as the accessory's main tile when switches are added.
+    lightSvc?.setPrimaryService(true);
+
+    for (const effect of this.effects) {
+      const subtype = `${EFFECT_SUBTYPE_PREFIX}${effect.value}`;
+      const name = `${this.device.friendlyName} ${effect.label}`;
+      let service = this.accessory.services.find(
+        (candidate: { subtype?: string }) => candidate.subtype === subtype,
+      ) as Service | undefined;
+      if (!service) {
+        service = this.accessory.addService(this.platform.Service.Switch, name, subtype);
+        // Home ignores the service Name for secondary services; ConfiguredName is
+        // what it displays. Set it only on creation so user renames stick.
+        service.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+        service.setCharacteristic(this.platform.Characteristic.ConfiguredName, name);
+      }
+
+      service.getCharacteristic(this.platform.Characteristic.On)
+        .onGet(() => {
+          if (this.offline) throw this.noResponse;
+          return this.getSelectedEffect() === effect.value;
+        })
+        .onSet((value) => {
+          if (value === true) {
+            this.setEffect(effect.value);
+          } else {
+            // Effects are mutually exclusive: turning the active one off is a
+            // no-op. Revert after HAP has applied the write so the switch
+            // snaps back on.
+            setTimeout(() => this.pushEffectCharacteristics(), 0);
+          }
+        });
+
+      this.effectSvcs.set(effect.value, service);
+    }
+
+    if (this.platform.debug) {
+      this.log.info(
+        `Exposed ${this.effects.length} effect switch(es) for "${this.device.friendlyName}": ` +
+        this.effects.map(effect => effect.label).join(', '),
+      );
+    }
+  }
+
+  private removeStaleEffectSwitches(): void {
+    const keep = new Set(this.effects.map(effect => `${EFFECT_SUBTYPE_PREFIX}${effect.value}`));
+    const stale = this.accessory.services.filter(
+      (service: { subtype?: string }) =>
+        service.subtype?.startsWith(EFFECT_SUBTYPE_PREFIX) && !keep.has(service.subtype),
+    );
+    for (const service of stale) {
+      this.accessory.removeService(service as Service);
     }
   }
 
@@ -481,7 +636,15 @@ export class LightAccessory extends BaseHubspaceAccessory {
 
   private getBrightness(instance: string | undefined): CharacteristicValue {
     const v = this.findLightValue(FC.BRIGHTNESS, instance);
-    return v ? Math.round(Number(v.value)) : 100;
+    if (v) return Math.round(Number(v.value));
+
+    const preset = this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)?.value;
+    return BRIGHTNESS_PRESET_LEVELS[String(preset).toLowerCase()] ?? 100;
+  }
+
+  private getSelectedEffect(): string | undefined {
+    const value = this.findValue(FC.COLOR_SEQUENCE, EFFECT_INSTANCE)?.value;
+    return typeof value === 'string' ? value : undefined;
   }
 
   private getColorTemp(instance: string | undefined): CharacteristicValue {
@@ -518,16 +681,58 @@ export class LightAccessory extends BaseHubspaceAccessory {
     const existingTimer = this.brightnessTimers.get(instance);
     if (existingTimer) clearTimeout(existingTimer);
     this.brightnessTimers.set(instance, setTimeout(async () => {
+      this.brightnessTimers.delete(instance);
       const rounded = Math.round(value);
+      const usesPresets = !this.findLightValue(FC.BRIGHTNESS, instance)
+        && this.findLightValue(FC.BRIGHTNESS_PRESETS, instance) !== undefined;
+
+      if (usesPresets && rounded <= 0) {
+        // Presets have no "zero" level; dragging the slider to 0 means off.
+        this.setDeviceValues([this.buildLightPatch(FC.POWER, 'off', instance)]);
+        return;
+      }
+
       const patches: Partial<DeviceStateValue>[] = [
-        this.buildLightPatch(FC.BRIGHTNESS, rounded, instance),
+        usesPresets
+          ? this.buildLightPatch(FC.BRIGHTNESS_PRESETS, this.brightnessToPreset(rounded), instance)
+          : this.buildLightPatch(FC.BRIGHTNESS, rounded, instance),
       ];
       if (rounded > 0 && !this.getPower(instance)) {
         patches.push(this.buildLightPatch(FC.POWER, 'on', instance));
       }
       this.setDeviceValues(patches);
-      this.brightnessTimers.delete(instance);
     }, 300));
+  }
+
+  /** Snap a HomeKit percentage to the preset whose device range contains it. */
+  private brightnessToPreset(value: number): string {
+    if (value <= 33) return 'low';
+    if (value <= 66) return 'medium';
+    return 'high';
+  }
+
+  private setEffect(effect: string): void {
+    const patches: Partial<DeviceStateValue>[] = [
+      this.buildPatch(FC.COLOR_SEQUENCE, effect, EFFECT_INSTANCE),
+    ];
+    if (this.findValue(FC.COLOR_MODE)) {
+      patches.push(this.buildPatch(FC.COLOR_MODE, 'sequence'));
+    }
+    // Picking an effect on a tree that's off should light it up, like the remote.
+    if (!this.getPower(undefined)) {
+      patches.push(this.buildPatch(FC.POWER, 'on'));
+    }
+    this.setDeviceValues(patches);
+  }
+
+  private pushEffectCharacteristics(): void {
+    for (const [value, service] of this.effectSvcs) {
+      if (this.offline) {
+        service.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+      } else {
+        service.updateCharacteristic(this.platform.Characteristic.On, this.getSelectedEffect() === value);
+      }
+    }
   }
 
   private readonly colorTempTimers = new Map<string | undefined, ReturnType<typeof setTimeout>>();
@@ -597,12 +802,14 @@ export class LightAccessory extends BaseHubspaceAccessory {
       for (const [, svc] of this.svcs) {
         svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
       }
+      this.pushEffectCharacteristics();
       return;
     }
     for (const [instance, svc] of this.svcs) {
       svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower(instance));
 
-      if (this.findLightValue(FC.BRIGHTNESS, instance)) {
+      if (this.findLightValue(FC.BRIGHTNESS, instance) ||
+          this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)) {
         svc.updateCharacteristic(
           this.platform.Characteristic.Brightness, this.getBrightness(instance));
       }
@@ -616,6 +823,7 @@ export class LightAccessory extends BaseHubspaceAccessory {
           this.platform.Characteristic.Saturation, this.getSaturation(instance));
       }
     }
+    this.pushEffectCharacteristics();
   }
 }
 
@@ -719,7 +927,6 @@ export class FanAccessory extends BaseHubspaceAccessory {
           .onSet((v) => { void this.setLightColorTemp(v as number); });
       }
     }
-
   }
 
   // ── Fan getters / setters ─────────────────────────────────────────────────────

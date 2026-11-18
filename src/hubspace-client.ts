@@ -219,6 +219,7 @@ export class HubspaceClient {
         values: raw.state?.values ?? [],
         colorTempCategories: this.extractColorTempCategories(raw),
         fanSpeedCategories: this.extractFanSpeedCategories(raw),
+        colorSequenceCategories: this.extractColorSequenceCategories(raw),
       });
     }
 
@@ -255,6 +256,10 @@ export class HubspaceClient {
             ...(secondary.fanSpeedCategories ?? {}),
             ...(primary.fanSpeedCategories ?? {}),
           },
+          colorSequenceCategories: {
+            ...(secondary.colorSequenceCategories ?? {}),
+            ...(primary.colorSequenceCategories ?? {}),
+          },
         };
         deduped.set(key, merged);
       }
@@ -283,10 +288,22 @@ export class HubspaceClient {
   }
 
   private extractFanSpeedCategories(raw: HubspaceMetadeviceRaw): Record<string, string[]> | undefined {
+    return this.extractCategoryNames(raw, FC.FAN_SPEED);
+  }
+
+  private extractColorSequenceCategories(raw: HubspaceMetadeviceRaw): Record<string, string[]> | undefined {
+    return this.extractCategoryNames(raw, FC.COLOR_SEQUENCE);
+  }
+
+  /** Category value names advertised for a function class, keyed by functionInstance. */
+  private extractCategoryNames(
+    raw: HubspaceMetadeviceRaw,
+    functionClass: string,
+  ): Record<string, string[]> | undefined {
     const categories: Record<string, string[]> = {};
 
     for (const fn of raw.description?.functions ?? []) {
-      if (fn.functionClass !== FC.FAN_SPEED || fn.type !== 'category') continue;
+      if (fn.functionClass !== functionClass || fn.type !== 'category') continue;
 
       const values = (fn.values ?? [])
         .map(value => value.name)

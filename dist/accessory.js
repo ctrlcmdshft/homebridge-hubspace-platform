@@ -5,6 +5,36 @@ exports.createAccessory = createAccessory;
 const axios_1 = require("axios");
 const types_1 = require("./types");
 const utils_1 = require("./utils");
+const BRIGHTNESS_PRESET_LEVELS = {
+    low: 33,
+    medium: 66,
+    high: 100,
+};
+const EFFECT_INSTANCE = 'preset';
+const EFFECT_SUBTYPE_PREFIX = 'effect-';
+const KNOWN_EFFECTS = [
+    { value: 'steady-warm-white-mcu', label: 'Steady Warm White' },
+    { value: 'steady-multi-mcu', label: 'Steady Multicolor' },
+    { value: 'twinkle-warm-white-mcu', label: 'Twinkle Warm White' },
+    { value: 'slow-fade-warm-white-mcu', label: 'Slow Fade Warm White' },
+    { value: 'slow-fade-multi-mcu', label: 'Slow Fade Multicolor' },
+    { value: 'slow-color-variable-mcu', label: 'Slow Color Variable' },
+    { value: 'fast-flip-mcu', label: 'Fast Flip' },
+    { value: 'slow-flip-mcu', label: 'Slow Flip' },
+    { value: 'slow-fade-mcu', label: 'Slow Fade' },
+];
+const HIDDEN_EFFECTS = new Set(['demo-mcu']);
+function effectLabel(value) {
+    const known = KNOWN_EFFECTS.find(effect => effect.value === value);
+    if (known)
+        return known.label;
+    return value
+        .replace(/-mcu$/, '')
+        .split(/[-_ ]+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
 class BaseHubspaceAccessory {
     platform;
     accessory;
@@ -29,12 +59,14 @@ class BaseHubspaceAccessory {
     setupAccessoryInfo() {
         const info = this.accessory.getService(this.platform.Service.AccessoryInformation)
             ?? this.accessory.addService(this.platform.Service.AccessoryInformation);
-        const safeName = (s, fallback) => (s?.trim().length ?? 0) > 1 ? s.trim() : fallback;
+        const MAX_INFO_LEN = 64;
+        const safeName = (s, fallback) => ((s?.trim().length ?? 0) > 1 ? s.trim() : fallback).slice(0, MAX_INFO_LEN);
+        const model = this.device.model?.split(',')[0];
         info
             .setCharacteristic(this.platform.Characteristic.Manufacturer, safeName(this.device.manufacturerName, 'Hubspace'))
-            .setCharacteristic(this.platform.Characteristic.Model, safeName(this.device.model, this.device.typeId))
-            .setCharacteristic(this.platform.Characteristic.SerialNumber, this.device.id)
-            .setCharacteristic(this.platform.Characteristic.Name, this.device.friendlyName);
+            .setCharacteristic(this.platform.Characteristic.Model, safeName(model, this.device.typeId))
+            .setCharacteristic(this.platform.Characteristic.SerialNumber, safeName(this.device.id, this.device.id))
+            .setCharacteristic(this.platform.Characteristic.Name, safeName(this.device.friendlyName, this.device.friendlyName));
     }
     rebuildStateMap(values) {
         this.stateMap.clear();
@@ -284,7 +316,8 @@ class LightAccessory extends BaseHubspaceAccessory {
                 return this.getPower(instance);
             })
                 .onSet((v) => { void this.setPower(instance, v); });
-            if (this.findLightValue(types_1.FC.BRIGHTNESS, instance)) {
+            if (this.findLightValue(types_1.FC.BRIGHTNESS, instance) ||
+                this.findLightValue(types_1.FC.BRIGHTNESS_PRESETS, instance)) {
                 svc.getCharacteristic(this.platform.Characteristic.Brightness)
                     .onGet(() => {
                     if (this.offline)
@@ -326,6 +359,67 @@ class LightAccessory extends BaseHubspaceAccessory {
                     .onGet(() => this.getStatusFault());
             }
         }
+        this.setupEffectSwitches(instances.length === 1 ? this.svcs.get(instances[0]) : undefined);
+    }
+    availableEffects() {
+        if (!this.findValue(types_1.FC.COLOR_SEQUENCE, EFFECT_INSTANCE) || !this.findValue(types_1.FC.BRIGHTNESS_PRESETS)) {
+            return [];
+        }
+        const advertised = this.device.colorSequenceCategories?.[EFFECT_INSTANCE];
+        const names = advertised && advertised.length > 0
+            ? advertised
+            : KNOWN_EFFECTS.map(effect => effect.value);
+        const order = new Map(KNOWN_EFFECTS.map((effect, index) => [effect.value, index]));
+        return [...new Set(names)]
+            .filter(name => !HIDDEN_EFFECTS.has(name))
+            .sort((a, b) => (order.get(a) ?? order.size) - (order.get(b) ?? order.size))
+            .map(value => ({ value, label: effectLabel(value) }));
+    }
+    setupEffectSwitches(lightSvc) {
+        this.effectSvcs = new Map();
+        this.effects = this.platform.exposeEffectSwitches ? this.availableEffects() : [];
+        if (!this.platform.exposeEffectSwitches || this.stateMap.size > 0) {
+            this.removeStaleEffectSwitches();
+        }
+        if (this.effects.length === 0)
+            return;
+        lightSvc?.setPrimaryService(true);
+        for (const effect of this.effects) {
+            const subtype = `${EFFECT_SUBTYPE_PREFIX}${effect.value}`;
+            const name = `${this.device.friendlyName} ${effect.label}`;
+            let service = this.accessory.services.find((candidate) => candidate.subtype === subtype);
+            if (!service) {
+                service = this.accessory.addService(this.platform.Service.Switch, name, subtype);
+                service.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+                service.setCharacteristic(this.platform.Characteristic.ConfiguredName, name);
+            }
+            service.getCharacteristic(this.platform.Characteristic.On)
+                .onGet(() => {
+                if (this.offline)
+                    throw this.noResponse;
+                return this.getSelectedEffect() === effect.value;
+            })
+                .onSet((value) => {
+                if (value === true) {
+                    this.setEffect(effect.value);
+                }
+                else {
+                    setTimeout(() => this.pushEffectCharacteristics(), 0);
+                }
+            });
+            this.effectSvcs.set(effect.value, service);
+        }
+        if (this.platform.debug) {
+            this.log.info(`Exposed ${this.effects.length} effect switch(es) for "${this.device.friendlyName}": ` +
+                this.effects.map(effect => effect.label).join(', '));
+        }
+    }
+    removeStaleEffectSwitches() {
+        const keep = new Set(this.effects.map(effect => `${EFFECT_SUBTYPE_PREFIX}${effect.value}`));
+        const stale = this.accessory.services.filter((service) => service.subtype?.startsWith(EFFECT_SUBTYPE_PREFIX) && !keep.has(service.subtype));
+        for (const service of stale) {
+            this.accessory.removeService(service);
+        }
     }
     getLightService(instance, multiEndpoint) {
         if (!multiEndpoint) {
@@ -359,7 +453,14 @@ class LightAccessory extends BaseHubspaceAccessory {
     }
     getBrightness(instance) {
         const v = this.findLightValue(types_1.FC.BRIGHTNESS, instance);
-        return v ? Math.round(Number(v.value)) : 100;
+        if (v)
+            return Math.round(Number(v.value));
+        const preset = this.findLightValue(types_1.FC.BRIGHTNESS_PRESETS, instance)?.value;
+        return BRIGHTNESS_PRESET_LEVELS[String(preset).toLowerCase()] ?? 100;
+    }
+    getSelectedEffect() {
+        const value = this.findValue(types_1.FC.COLOR_SEQUENCE, EFFECT_INSTANCE)?.value;
+        return typeof value === 'string' ? value : undefined;
     }
     getColorTemp(instance) {
         const v = this.findLightValue(types_1.FC.COLOR_TEMP, instance);
@@ -393,16 +494,53 @@ class LightAccessory extends BaseHubspaceAccessory {
         if (existingTimer)
             clearTimeout(existingTimer);
         this.brightnessTimers.set(instance, setTimeout(async () => {
+            this.brightnessTimers.delete(instance);
             const rounded = Math.round(value);
+            const usesPresets = !this.findLightValue(types_1.FC.BRIGHTNESS, instance)
+                && this.findLightValue(types_1.FC.BRIGHTNESS_PRESETS, instance) !== undefined;
+            if (usesPresets && rounded <= 0) {
+                this.setDeviceValues([this.buildLightPatch(types_1.FC.POWER, 'off', instance)]);
+                return;
+            }
             const patches = [
-                this.buildLightPatch(types_1.FC.BRIGHTNESS, rounded, instance),
+                usesPresets
+                    ? this.buildLightPatch(types_1.FC.BRIGHTNESS_PRESETS, this.brightnessToPreset(rounded), instance)
+                    : this.buildLightPatch(types_1.FC.BRIGHTNESS, rounded, instance),
             ];
             if (rounded > 0 && !this.getPower(instance)) {
                 patches.push(this.buildLightPatch(types_1.FC.POWER, 'on', instance));
             }
             this.setDeviceValues(patches);
-            this.brightnessTimers.delete(instance);
         }, 300));
+    }
+    brightnessToPreset(value) {
+        if (value <= 33)
+            return 'low';
+        if (value <= 66)
+            return 'medium';
+        return 'high';
+    }
+    setEffect(effect) {
+        const patches = [
+            this.buildPatch(types_1.FC.COLOR_SEQUENCE, effect, EFFECT_INSTANCE),
+        ];
+        if (this.findValue(types_1.FC.COLOR_MODE)) {
+            patches.push(this.buildPatch(types_1.FC.COLOR_MODE, 'sequence'));
+        }
+        if (!this.getPower(undefined)) {
+            patches.push(this.buildPatch(types_1.FC.POWER, 'on'));
+        }
+        this.setDeviceValues(patches);
+    }
+    pushEffectCharacteristics() {
+        for (const [value, service] of this.effectSvcs) {
+            if (this.offline) {
+                service.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+            }
+            else {
+                service.updateCharacteristic(this.platform.Characteristic.On, this.getSelectedEffect() === value);
+            }
+        }
     }
     colorTempTimers = new Map();
     async setColorTemp(instance, mireds) {
@@ -462,11 +600,13 @@ class LightAccessory extends BaseHubspaceAccessory {
             for (const [, svc] of this.svcs) {
                 svc.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
             }
+            this.pushEffectCharacteristics();
             return;
         }
         for (const [instance, svc] of this.svcs) {
             svc.updateCharacteristic(this.platform.Characteristic.On, this.getPower(instance));
-            if (this.findLightValue(types_1.FC.BRIGHTNESS, instance)) {
+            if (this.findLightValue(types_1.FC.BRIGHTNESS, instance) ||
+                this.findLightValue(types_1.FC.BRIGHTNESS_PRESETS, instance)) {
                 svc.updateCharacteristic(this.platform.Characteristic.Brightness, this.getBrightness(instance));
             }
             if (this.findLightValue(types_1.FC.COLOR_TEMP, instance)) {
@@ -477,6 +617,7 @@ class LightAccessory extends BaseHubspaceAccessory {
                 svc.updateCharacteristic(this.platform.Characteristic.Saturation, this.getSaturation(instance));
             }
         }
+        this.pushEffectCharacteristics();
     }
 }
 exports.LightAccessory = LightAccessory;

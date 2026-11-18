@@ -235,6 +235,56 @@ describe('getDevices — semantic categories', () => {
       ],
     });
   });
+
+  it('preserves advertised color-sequence effects for accessory mapping', async () => {
+    fsMock.readFile.mockResolvedValue(JSON.stringify(validTokens()) as any);
+    axiosMock.get.mockResolvedValue({ data: usersMe });
+    const client = makeClient();
+    await client.initialize();
+    const http = (axiosMock.create as jest.Mock).mock.results[0].value;
+    // Shape captured from a Home Decorators Collection Smart Grand Duchess tree.
+    http.get.mockResolvedValue({
+      data: [{
+        id: 'tree-1',
+        typeId: 'metadevice.device',
+        friendlyName: 'Christmas Tree',
+        description: {
+          device: { deviceClass: 'light' },
+          functions: [
+            {
+              functionClass: FC.COLOR_SEQUENCE,
+              functionInstance: 'preset',
+              type: 'category',
+              values: [
+                { name: 'slow-fade-mcu' },
+                { name: 'demo-mcu' },
+                { name: 'steady-warm-white-mcu' },
+              ],
+            },
+            {
+              functionClass: FC.BRIGHTNESS_PRESETS,
+              type: 'category',
+              values: [{ name: 'medium' }, { name: 'low' }, { name: 'high' }],
+            },
+          ],
+        },
+        state: {
+          metadeviceId: 'tree-1',
+          values: [
+            { functionClass: FC.COLOR_SEQUENCE, functionInstance: 'preset', value: 'steady-warm-white-mcu' },
+            { functionClass: FC.BRIGHTNESS_PRESETS, functionInstance: null, value: 'low' },
+          ],
+        },
+      }],
+    });
+
+    const devices = await client.getDevices();
+
+    expect(devices[0].colorSequenceCategories).toEqual({
+      preset: ['slow-fade-mcu', 'demo-mcu', 'steady-warm-white-mcu'],
+    });
+    expect(devices[0].fanSpeedCategories).toBeUndefined();
+  });
 });
 
 // ── Token storage ─────────────────────────────────────────────────────────────

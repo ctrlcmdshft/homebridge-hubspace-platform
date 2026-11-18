@@ -20,6 +20,8 @@ export interface HubspaceConfig {
   exposeComfortBreeze?: boolean;
   /** Expose ceiling-fan master power (power[primary]) as a separate HomeKit switch tile (default false). */
   exposeMasterPowerSwitch?: boolean;
+  /** Expose light effect presets (e.g. Grand Duchess tree sequences) as HomeKit switches (default false). */
+  exposeEffectSwitches?: boolean;
   /** Expose StatusFault on fans and lights when offline (non-standard — may not render in Apple Home; default false). */
   exposeStatusFault?: boolean;
   /** Set to true to disable the Conclave push connection and rely only on polling. */
@@ -119,6 +121,8 @@ export interface HubspaceDevice {
   colorTempCategories?: Record<string, Array<string | number>>;
   /** Discrete fan-speed category names advertised by semantics2, keyed by functionInstance. */
   fanSpeedCategories?: Record<string, string[]>;
+  /** Light effect (color-sequence) names advertised by semantics2, keyed by functionInstance. */
+  colorSequenceCategories?: Record<string, string[]>;
 }
 
 // ─── Accessory context (persisted in PlatformAccessory.context) ───────────────
@@ -152,9 +156,11 @@ export const FC = {
   POWER: 'power',
   TOGGLE: 'toggle',
   BRIGHTNESS: 'brightness',
+  BRIGHTNESS_PRESETS: 'brightness-presets',
   COLOR_TEMP: 'color-temperature',
   COLOR_RGB: 'color-rgb',
   COLOR_MODE: 'color-mode',
+  COLOR_SEQUENCE: 'color-sequence',
   FAN_SPEED: 'fan-speed',
   FAN_REVERSE: 'fan-reverse',
   AVAILABLE: 'available',

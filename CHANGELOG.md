@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Home Decorators Smart Grand Duchess Tree** — the tree's Low / Medium / High `brightness-presets` now drive the HomeKit brightness slider (33 / 66 / 100%); slider positions snap to the device's own ranges and 0% turns the tree off.
+- **Light effect switches** — opt-in `exposeEffectSwitches: true` adds one mutually exclusive Switch per `color-sequence[preset]` effect on lights that also report `brightness-presets` (the Grand Duchess tree). The effect list comes from the device's advertised capabilities, with friendly names for known tree effects; the Demo loop is hidden. Selecting an effect turns the tree on. Turning the option off removes the switches.
+
+### Fixed
+
+- **Accessory information** — devices that report a comma-separated list of model numbers (the Grand Duchess tree) now show the first model instead of triggering HAP's "exceeded max length of 64" warning, and all info strings are capped at HomeKit's 64-character limit.
+- **Cached accessories** — restored accessories are now persisted after their handler sets up services, so services added for newly supported capabilities are kept.
+
+---
+
 ## [2.1.7] - 2026-09-18
 
 This release improves multi-outlet accessory migration and adds support for fans that advertise device-specific speed categories, including the nine-speed Home Decorators Collection Tager fan.

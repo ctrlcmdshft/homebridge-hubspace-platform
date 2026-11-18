@@ -27,6 +27,7 @@ function makeSvcMock() {
     addOptionalCharacteristic: jest.fn(),
     setCharacteristic: jest.fn().mockReturnThis(),
     updateCharacteristic: jest.fn(),
+    setPrimaryService: jest.fn(),
     _char: char,
   };
 }
@@ -41,13 +42,16 @@ const LockCurrentState = { UNSECURED: 0, SECURED: 1, JAMMED: 2, UNKNOWN: 3 };
 const LockTargetState = { UNSECURED: 0, SECURED: 1 };
 const StatusLowBattery = { BATTERY_LEVEL_NORMAL: 0, BATTERY_LEVEL_LOW: 1 };
 
-function makePlatform(opts: { exposeStatusFault?: boolean; verbose?: boolean } = {}) {
+function makePlatform(
+  opts: { exposeStatusFault?: boolean; verbose?: boolean; exposeEffectSwitches?: boolean } = {},
+) {
   const svc = makeSvcMock();
   return {
     log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
     debug: false,
     verbose: opts.verbose ?? false,
     exposeStatusFault: opts.exposeStatusFault ?? false,
+    exposeEffectSwitches: opts.exposeEffectSwitches ?? false,
     invertOutletStatus: false,
     api: {
       hap: {
@@ -89,6 +93,7 @@ function makePlatform(opts: { exposeStatusFault?: boolean; verbose?: boolean } =
       Model: 'Model',
       SerialNumber: 'SerialNumber',
       Name: 'Name',
+      ConfiguredName: 'ConfiguredName',
     },
     _svc: svc,
   };
@@ -146,12 +151,31 @@ function makeFanDevice(
 function makeLightDevice(
   values: DeviceStateValue[],
   colorTempCategories?: Record<string, Array<string | number>>,
+  colorSequenceCategories?: Record<string, string[]>,
 ) {
   return {
     id: 'light-1', allIds: ['light-1'], typeId: 'metadevice.device',
     friendlyName: 'Ceiling Light', deviceClass: 'light',
-    manufacturerName: 'Hubspace', model: 'test-model', values, colorTempCategories,
+    manufacturerName: 'Hubspace', model: 'test-model', values, colorTempCategories, colorSequenceCategories,
   };
+}
+
+/** State reported by a Home Decorators Collection Smart Grand Duchess tree. */
+function grandDuchessValues(
+  overrides: { power?: string; brightness?: string; effect?: string } = {},
+): DeviceStateValue[] {
+  return [
+    sv(FC.POWER, overrides.power ?? 'on'),
+    sv(FC.BRIGHTNESS_PRESETS, overrides.brightness ?? 'high'),
+    sv(FC.COLOR_MODE, 'sequence'),
+    sv(FC.COLOR_SEQUENCE, overrides.effect ?? 'steady-warm-white-mcu', 'preset'),
+  ];
+}
+
+/** Flush the 0 ms write-coalescing timer and the async PUT it schedules. */
+async function flushWrites() {
+  jest.runOnlyPendingTimers();
+  await Promise.resolve();
 }
 
 function makeOutletDevice(values: DeviceStateValue[]) {
@@ -735,6 +759,327 @@ describe('LightAccessory', () => {
       lightAcc.updateState(device.values);
 
       expect(platform._svc.updateCharacteristic).toHaveBeenCalledWith('Brightness', 75);
+    });
+
+    it.each([
+      ['low', 33],
+      ['medium', 66],
+      ['high', 100],
+    ])('maps preset %s to HomeKit brightness %i', (preset, expected) => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS_PRESETS, preset),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'steady-warm-white-mcu', 'preset'),
+      ]);
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+      lightAcc.updateState(device.values);
+
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      expect(lightService.updateCharacteristic).toHaveBeenCalledWith('Brightness', expected);
+    });
+
+    it.each([
+      [20, 'low'],
+      [50, 'medium'],
+      [80, 'high'],
+    ])('writes brightness %i to the %s preset', async (brightness, preset) => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS_PRESETS, 'low'),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'steady-warm-white-mcu', 'preset'),
+      ]);
+      new LightAccessory(platform as any, acc as any, device as any);
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      const onSetBrightness = (lightService._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetBrightness(brightness);
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.BRIGHTNESS_PRESETS, value: preset })],
+      );
+    });
+
+    it.each([
+      [33, 'low'],
+      [34, 'medium'],
+      [66, 'medium'],
+      [67, 'high'],
+      [1, 'low'],
+    ])('snaps brightness %i to the device range for %s', async (brightness, preset) => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      const onSetBrightness = (lightService._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetBrightness(brightness);
+      jest.advanceTimersByTime(300);
+      await flushWrites();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.BRIGHTNESS_PRESETS, value: preset })],
+      );
+    });
+
+    it('turns the tree off instead of writing a preset when brightness drops to 0', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      const onSetBrightness = (lightService._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetBrightness(0);
+      jest.advanceTimersByTime(300);
+      await flushWrites();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledTimes(1);
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        [expect.objectContaining({ functionClass: FC.POWER, value: 'off' })],
+      );
+    });
+
+    it('turns the tree on when a preset brightness is chosen while it is off', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(
+        platform as any, acc as any,
+        makeLightDevice(grandDuchessValues({ power: 'off', brightness: 'low' })) as any,
+      );
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      const onSetBrightness = (lightService._char.onSet as jest.Mock).mock.calls[1][0];
+
+      onSetBrightness(100);
+      jest.advanceTimersByTime(300);
+      await flushWrites();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith('light-1', [
+        expect.objectContaining({ functionClass: FC.BRIGHTNESS_PRESETS, value: 'high' }),
+        expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+      ]);
+    });
+  });
+
+  describe('Grand Duchess effects', () => {
+    it('does not expose effect switches unless exposeEffectSwitches is enabled', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+
+      expect(acc.services.filter(service => service.subtype?.startsWith('effect-'))).toHaveLength(0);
+      expect(acc.services).toHaveLength(1);
+    });
+
+    it('removes previously cached effect switches when the option is turned off', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      acc.addService('Switch', 'Ceiling Light Fast Flip', 'effect-fast-flip-mcu');
+      acc.addService('Switch', 'Ceiling Light Slow Flip', 'effect-slow-flip-mcu');
+
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+
+      expect(acc.removeService).toHaveBeenCalledTimes(2);
+      expect(acc.services.filter(service => service.subtype?.startsWith('effect-'))).toHaveLength(0);
+    });
+
+    it('does not expose effect switches for color-sequence lights without brightness presets', () => {
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice([
+        sv(FC.POWER, 'on'),
+        sv(FC.BRIGHTNESS, 80),
+        sv(FC.COLOR_MODE, 'sequence'),
+        sv(FC.COLOR_SEQUENCE, 'christmas', 'preset'),
+      ]) as any);
+
+      expect(acc.services.filter(service => service.subtype?.startsWith('effect-'))).toHaveLength(0);
+    });
+
+    it('uses the effects advertised by the device, hiding demo and labelling unknown ones', () => {
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      // Left over from an earlier firmware that advertised a different effect.
+      acc.addService('Switch', 'Ceiling Light Old Effect', 'effect-old-effect-mcu');
+
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues(), undefined, {
+        preset: ['candy-cane-mcu', 'demo-mcu', 'twinkle-warm-white-mcu', 'steady-warm-white-mcu'],
+      }) as any);
+
+      const effectServices = acc.services.filter(service => service.subtype?.startsWith('effect-'));
+      expect(effectServices.map(service => service.subtype)).toEqual([
+        'effect-steady-warm-white-mcu',
+        'effect-twinkle-warm-white-mcu',
+        'effect-candy-cane-mcu',
+      ]);
+      expect(acc.addService).toHaveBeenCalledWith('Switch', 'Ceiling Light Candy Cane', 'effect-candy-cane-mcu');
+      expect(effectServices[2].setCharacteristic)
+        .toHaveBeenCalledWith('ConfiguredName', 'Ceiling Light Candy Cane');
+      expect(acc.services.find(service => service.subtype === 'effect-old-effect-mcu')).toBeUndefined();
+    });
+
+    it('keeps cached effect switches when restoring without device state', () => {
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      acc.addService('Switch', 'Ceiling Light Fast Flip', 'effect-fast-flip-mcu');
+
+      new LightAccessory(platform as any, acc as any, makeLightDevice([]) as any);
+
+      expect(acc.removeService).not.toHaveBeenCalled();
+    });
+
+    it('makes the light the primary service when effect switches are exposed', () => {
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+
+      const lightService = acc.services.find(service => service.subtype === undefined)!;
+      expect(lightService.setPrimaryService).toHaveBeenCalledWith(true);
+    });
+
+    it('exposes all nine mutually exclusive effects and reflects Hubspace updates', () => {
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = makeLightDevice(grandDuchessValues());
+      const lightAcc = new LightAccessory(platform as any, acc as any, device as any);
+
+      const effectServices = acc.services.filter(service => service.subtype?.startsWith('effect-'));
+      expect(effectServices).toHaveLength(9);
+      expect(effectServices.map(service => service.subtype).sort()).toEqual([
+        'effect-fast-flip-mcu',
+        'effect-slow-fade-mcu',
+        'effect-slow-fade-multi-mcu',
+        'effect-slow-fade-warm-white-mcu',
+        'effect-slow-flip-mcu',
+        'effect-slow-color-variable-mcu',
+        'effect-steady-multi-mcu',
+        'effect-steady-warm-white-mcu',
+        'effect-twinkle-warm-white-mcu',
+      ].sort());
+
+      lightAcc.updateState([
+        ...device.values.filter(value => value.functionClass !== FC.COLOR_SEQUENCE),
+        sv(FC.COLOR_SEQUENCE, 'slow-flip-mcu', 'preset'),
+      ]);
+
+      for (const service of effectServices) {
+        expect(service.updateCharacteristic).toHaveBeenCalledWith(
+          'On',
+          service.subtype === 'effect-slow-flip-mcu',
+        );
+      }
+    });
+
+    it('writes the selected effect and sequence mode to Hubspace', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+      const fastFlip = acc.services.find(service => service.subtype === 'effect-fast-flip-mcu')!;
+      const onSet = (fastFlip._char.onSet as jest.Mock).mock.calls[0][0];
+
+      onSet(true);
+      await flushWrites();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith('light-1', [
+        expect.objectContaining({
+          functionClass: FC.COLOR_SEQUENCE,
+          functionInstance: 'preset',
+          value: 'fast-flip-mcu',
+        }),
+        expect.objectContaining({
+          functionClass: FC.COLOR_MODE,
+          value: 'sequence',
+        }),
+      ]);
+    });
+
+    it('turns the tree on when an effect is selected while it is off', async () => {
+      jest.useFakeTimers();
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(
+        platform as any, acc as any,
+        makeLightDevice(grandDuchessValues({ power: 'off' })) as any,
+      );
+      const twinkle = acc.services.find(service => service.subtype === 'effect-twinkle-warm-white-mcu')!;
+      const onSet = (twinkle._char.onSet as jest.Mock).mock.calls[0][0];
+
+      onSet(true);
+      await flushWrites();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).toHaveBeenCalledWith(
+        'light-1',
+        expect.arrayContaining([
+          expect.objectContaining({ functionClass: FC.COLOR_SEQUENCE, value: 'twinkle-warm-white-mcu' }),
+          expect.objectContaining({ functionClass: FC.POWER, value: 'on' }),
+        ]),
+      );
+    });
+
+    it('snaps the active effect switch back on when turned off', () => {
+      jest.useFakeTimers();
+      const platform = makePlatform({ exposeEffectSwitches: true });
+      const acc = makeMultiServiceAccessoryMock(platform);
+      new LightAccessory(platform as any, acc as any, makeLightDevice(grandDuchessValues()) as any);
+      const steady = acc.services.find(service => service.subtype === 'effect-steady-warm-white-mcu')!;
+      const onSet = (steady._char.onSet as jest.Mock).mock.calls[0][0];
+
+      onSet(false);
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+
+      expect(platform.client.setDeviceState).not.toHaveBeenCalled();
+      expect(steady.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    });
+  });
+
+  describe('accessory information', () => {
+    it('uses the first model of a comma-separated SKU list so HomeKit accepts it', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = {
+        ...makeLightDevice(grandDuchessValues()),
+        friendlyName: 'Grand Duchess Christmas Tree',
+        model: Array.from({ length: 9 }, (_, i) => `26LE310${13 + i}`).join(', '),
+      };
+      new LightAccessory(platform as any, acc as any, device as any);
+      const info = acc.getService.mock.results[0].value as ReturnType<typeof makeSvcMock>;
+
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Model', '26LE31013');
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Name', 'Grand Duchess Christmas Tree');
+    });
+
+    it('caps accessory information strings at 64 characters', () => {
+      const platform = makePlatform();
+      const acc = makeMultiServiceAccessoryMock(platform);
+      const device = { ...makeLightDevice([sv(FC.POWER, 'on')]), model: 'M'.repeat(80), manufacturerName: 'H'.repeat(80) };
+      new LightAccessory(platform as any, acc as any, device as any);
+      const info = acc.getService.mock.results[0].value as ReturnType<typeof makeSvcMock>;
+
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Model', 'M'.repeat(64));
+      expect(info.setCharacteristic).toHaveBeenCalledWith('Manufacturer', 'H'.repeat(64));
     });
   });
 
