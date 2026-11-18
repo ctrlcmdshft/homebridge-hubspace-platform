@@ -27,6 +27,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
   public readonly verbose: boolean;
   public readonly exposeStatusFault: boolean;
   public readonly invertOutletStatus: boolean;
+  public readonly exposeEffectSwitches: boolean;
   private readonly configured: boolean;
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -52,6 +53,7 @@ export class HubspacePlatform implements DynamicPlatformPlugin {
     this.verbose = this.cfg.verbose ?? false;
     this.exposeStatusFault = this.cfg.exposeStatusFault ?? false;
     this.invertOutletStatus = this.cfg.invertOutletStatus ?? false;
+    this.exposeEffectSwitches = this.cfg.exposeEffectSwitches ?? false;
     this.conclaveLog = createLogger(this.log, 'Conclave');
     this.pollLog = createLogger(this.log, 'Poll');
 

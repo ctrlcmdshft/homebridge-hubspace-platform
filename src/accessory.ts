@@ -27,13 +27,32 @@ type ColorTempCategory = {
   value: string | number;
 };
 
-const GRAND_DUCHESS_BRIGHTNESS_PRESETS = [
-  { value: 'low', brightness: 33 },
-  { value: 'medium', brightness: 66 },
-  { value: 'high', brightness: 100 },
-] as const;
+type EffectOption = {
+  value: string;
+  label: string;
+};
 
-const GRAND_DUCHESS_EFFECTS = [
+/**
+ * HomeKit brightness shown for each `brightness-presets` level. These match the
+ * Grand Duchess tree's semantic values (low 1…33, medium 34…66, high 67…100).
+ */
+const BRIGHTNESS_PRESET_LEVELS: Record<string, number> = {
+  low: 33,
+  medium: 66,
+  high: 100,
+};
+
+/** `color-sequence` functionInstance holding on-device effect presets. */
+const EFFECT_INSTANCE = 'preset';
+/** Service subtype prefix for effect switches. */
+const EFFECT_SUBTYPE_PREFIX = 'effect-';
+
+/**
+ * Friendly labels for known Grand Duchess tree sequences, in the order the
+ * tree's remote lists them. Effects the device advertises that aren't listed
+ * here still get exposed with a label derived from their ID.
+ */
+const KNOWN_EFFECTS: readonly EffectOption[] = [
   { value: 'steady-warm-white-mcu', label: 'Steady Warm White' },
   { value: 'steady-multi-mcu', label: 'Steady Multicolor' },
   { value: 'twinkle-warm-white-mcu', label: 'Twinkle Warm White' },
@@ -43,7 +62,21 @@ const GRAND_DUCHESS_EFFECTS = [
   { value: 'fast-flip-mcu', label: 'Fast Flip' },
   { value: 'slow-flip-mcu', label: 'Slow Flip' },
   { value: 'slow-fade-mcu', label: 'Slow Fade' },
-] as const;
+];
+
+/** Effects never exposed as switches (the store-display demo loop). */
+const HIDDEN_EFFECTS = new Set(['demo-mcu']);
+
+function effectLabel(value: string): string {
+  const known = KNOWN_EFFECTS.find(effect => effect.value === value);
+  if (known) return known.label;
+  return value
+    .replace(/-mcu$/, '')
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 // ─── Base accessory ───────────────────────────────────────────────────────────
 
@@ -363,6 +396,9 @@ export abstract class BaseHubspaceAccessory {
 
 export class LightAccessory extends BaseHubspaceAccessory {
   declare private svcs: Map<string | undefined, Service>;
+  /** Effects exposed as switches (empty unless exposeEffectSwitches is on and supported). */
+  declare private effects: EffectOption[];
+  declare private effectSvcs: Map<string, Service>;
   /** Tracks pending HomeKit hue/saturation by light endpoint so they can be combined. */
   private readonly pendingHue = new Map<string | undefined, number>();
   private readonly pendingSat = new Map<string | undefined, number>();
@@ -452,25 +488,62 @@ export class LightAccessory extends BaseHubspaceAccessory {
       }
     }
 
-    this.setupGrandDuchessEffectSwitches();
+    this.setupEffectSwitches(instances.length === 1 ? this.svcs.get(instances[0]) : undefined);
   }
 
-  private setupGrandDuchessEffectSwitches(): void {
-    if (!this.findValue(FC.POWER) ||
-        !this.findValue(FC.BRIGHTNESS_PRESETS) ||
-        !this.findValue(FC.COLOR_SEQUENCE) ||
-        !this.findValue(FC.COLOR_MODE)) return;
+  /**
+   * Effects to expose as switches. Only lights with on-device effect presets
+   * (`color-sequence[preset]`) and `brightness-presets` qualify — the Grand
+   * Duchess tree signature. Other lights with `color-sequence` (e.g. string
+   * lights) advertise dozens of presets and haven't been tested with this UI.
+   */
+  private availableEffects(): EffectOption[] {
+    if (!this.findValue(FC.COLOR_SEQUENCE, EFFECT_INSTANCE) || !this.findValue(FC.BRIGHTNESS_PRESETS)) {
+      return [];
+    }
 
-    for (const effect of GRAND_DUCHESS_EFFECTS) {
-      const subtype = `effect-${effect.value}`;
-      const existing = this.accessory.services.find(
-        (service: { subtype?: string }) => service.subtype === subtype,
-      );
-      const service = (existing as Service | undefined) ?? this.accessory.addService(
-        this.platform.Service.Switch,
-        `${this.device.friendlyName} ${effect.label}`,
-        subtype,
-      );
+    const advertised = this.device.colorSequenceCategories?.[EFFECT_INSTANCE];
+    const names = advertised && advertised.length > 0
+      ? advertised
+      : KNOWN_EFFECTS.map(effect => effect.value);
+    const order = new Map(KNOWN_EFFECTS.map((effect, index) => [effect.value, index]));
+
+    return [...new Set(names)]
+      .filter(name => !HIDDEN_EFFECTS.has(name))
+      // Known effects first in remote-control order; unknown ones keep the
+      // device's advertised order (Array.prototype.sort is stable).
+      .sort((a, b) => (order.get(a) ?? order.size) - (order.get(b) ?? order.size))
+      .map(value => ({ value, label: effectLabel(value) }));
+  }
+
+  private setupEffectSwitches(lightSvc: Service | undefined): void {
+    this.effectSvcs = new Map();
+    this.effects = this.platform.exposeEffectSwitches ? this.availableEffects() : [];
+
+    // Drop switches the user disabled or the device no longer advertises. When
+    // there is no state at all (cached fallback while the API is unreachable),
+    // keep existing switches so an outage doesn't strip them from HomeKit.
+    if (!this.platform.exposeEffectSwitches || this.stateMap.size > 0) {
+      this.removeStaleEffectSwitches();
+    }
+    if (this.effects.length === 0) return;
+
+    // Keep the light as the accessory's main tile when switches are added.
+    lightSvc?.setPrimaryService(true);
+
+    for (const effect of this.effects) {
+      const subtype = `${EFFECT_SUBTYPE_PREFIX}${effect.value}`;
+      const name = `${this.device.friendlyName} ${effect.label}`;
+      let service = this.accessory.services.find(
+        (candidate: { subtype?: string }) => candidate.subtype === subtype,
+      ) as Service | undefined;
+      if (!service) {
+        service = this.accessory.addService(this.platform.Service.Switch, name, subtype);
+        // Home ignores the service Name for secondary services; ConfiguredName is
+        // what it displays. Set it only on creation so user renames stick.
+        service.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+        service.setCharacteristic(this.platform.Characteristic.ConfiguredName, name);
+      }
 
       service.getCharacteristic(this.platform.Characteristic.On)
         .onGet(() => {
@@ -481,9 +554,32 @@ export class LightAccessory extends BaseHubspaceAccessory {
           if (value === true) {
             this.setEffect(effect.value);
           } else {
-            this.pushEffectCharacteristics();
+            // Effects are mutually exclusive: turning the active one off is a
+            // no-op. Revert after HAP has applied the write so the switch
+            // snaps back on.
+            setTimeout(() => this.pushEffectCharacteristics(), 0);
           }
         });
+
+      this.effectSvcs.set(effect.value, service);
+    }
+
+    if (this.platform.debug) {
+      this.log.info(
+        `Exposed ${this.effects.length} effect switch(es) for "${this.device.friendlyName}": ` +
+        this.effects.map(effect => effect.label).join(', '),
+      );
+    }
+  }
+
+  private removeStaleEffectSwitches(): void {
+    const keep = new Set(this.effects.map(effect => `${EFFECT_SUBTYPE_PREFIX}${effect.value}`));
+    const stale = this.accessory.services.filter(
+      (service: { subtype?: string }) =>
+        service.subtype?.startsWith(EFFECT_SUBTYPE_PREFIX) && !keep.has(service.subtype),
+    );
+    for (const service of stale) {
+      this.accessory.removeService(service as Service);
     }
   }
 
@@ -537,14 +633,11 @@ export class LightAccessory extends BaseHubspaceAccessory {
     if (v) return Math.round(Number(v.value));
 
     const preset = this.findLightValue(FC.BRIGHTNESS_PRESETS, instance)?.value;
-    const presetMapping = GRAND_DUCHESS_BRIGHTNESS_PRESETS.find(
-      item => item.value === String(preset).toLowerCase(),
-    );
-    return presetMapping?.brightness ?? 100;
+    return BRIGHTNESS_PRESET_LEVELS[String(preset).toLowerCase()] ?? 100;
   }
 
   private getSelectedEffect(): string | undefined {
-    const value = this.findValue(FC.COLOR_SEQUENCE, 'preset')?.value;
+    const value = this.findValue(FC.COLOR_SEQUENCE, EFFECT_INSTANCE)?.value;
     return typeof value === 'string' ? value : undefined;
   }
 
@@ -582,26 +675,30 @@ export class LightAccessory extends BaseHubspaceAccessory {
     const existingTimer = this.brightnessTimers.get(instance);
     if (existingTimer) clearTimeout(existingTimer);
     this.brightnessTimers.set(instance, setTimeout(async () => {
+      this.brightnessTimers.delete(instance);
       const rounded = Math.round(value);
-      const currentBrightness = this.findLightValue(FC.BRIGHTNESS, instance);
-      const brightnessPatch = currentBrightness
-        ? this.buildLightPatch(FC.BRIGHTNESS, rounded, instance)
-        : this.buildLightPatch(
-          FC.BRIGHTNESS_PRESETS,
-          this.brightnessToPreset(rounded),
-          instance,
-        );
+      const usesPresets = !this.findLightValue(FC.BRIGHTNESS, instance)
+        && this.findLightValue(FC.BRIGHTNESS_PRESETS, instance) !== undefined;
+
+      if (usesPresets && rounded <= 0) {
+        // Presets have no "zero" level; dragging the slider to 0 means off.
+        this.setDeviceValues([this.buildLightPatch(FC.POWER, 'off', instance)]);
+        return;
+      }
+
       const patches: Partial<DeviceStateValue>[] = [
-        brightnessPatch,
+        usesPresets
+          ? this.buildLightPatch(FC.BRIGHTNESS_PRESETS, this.brightnessToPreset(rounded), instance)
+          : this.buildLightPatch(FC.BRIGHTNESS, rounded, instance),
       ];
       if (rounded > 0 && !this.getPower(instance)) {
         patches.push(this.buildLightPatch(FC.POWER, 'on', instance));
       }
       this.setDeviceValues(patches);
-      this.brightnessTimers.delete(instance);
     }, 300));
   }
 
+  /** Snap a HomeKit percentage to the preset whose device range contains it. */
   private brightnessToPreset(value: number): string {
     if (value <= 33) return 'low';
     if (value <= 66) return 'medium';
@@ -609,24 +706,25 @@ export class LightAccessory extends BaseHubspaceAccessory {
   }
 
   private setEffect(effect: string): void {
-    this.setDeviceValues([
-      this.buildPatch(FC.COLOR_SEQUENCE, effect, 'preset'),
-      this.buildPatch(FC.COLOR_MODE, 'sequence'),
-    ]);
+    const patches: Partial<DeviceStateValue>[] = [
+      this.buildPatch(FC.COLOR_SEQUENCE, effect, EFFECT_INSTANCE),
+    ];
+    if (this.findValue(FC.COLOR_MODE)) {
+      patches.push(this.buildPatch(FC.COLOR_MODE, 'sequence'));
+    }
+    // Picking an effect on a tree that's off should light it up, like the remote.
+    if (!this.getPower(undefined)) {
+      patches.push(this.buildPatch(FC.POWER, 'on'));
+    }
+    this.setDeviceValues(patches);
   }
 
   private pushEffectCharacteristics(): void {
-    for (const effect of GRAND_DUCHESS_EFFECTS) {
-      const service = this.accessory.services.find(
-        (candidate: { subtype?: string }) => candidate.subtype === `effect-${effect.value}`,
-      ) as Service | undefined;
+    for (const [value, service] of this.effectSvcs) {
       if (this.offline) {
-        service?.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
+        service.updateCharacteristic(this.platform.Characteristic.On, this.noResponse);
       } else {
-        service?.updateCharacteristic(
-          this.platform.Characteristic.On,
-          this.getSelectedEffect() === effect.value,
-        );
+        service.updateCharacteristic(this.platform.Characteristic.On, this.getSelectedEffect() === value);
       }
     }
   }

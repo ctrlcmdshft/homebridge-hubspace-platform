@@ -11,6 +11,7 @@ export interface HubspaceConfig {
     verbose?: boolean;
     exposeComfortBreeze?: boolean;
     exposeMasterPowerSwitch?: boolean;
+    exposeEffectSwitches?: boolean;
     exposeStatusFault?: boolean;
     disableConclave?: boolean;
     invertOutletStatus?: boolean;
@@ -86,6 +87,7 @@ export interface HubspaceDevice {
     values: DeviceStateValue[];
     colorTempCategories?: Record<string, Array<string | number>>;
     fanSpeedCategories?: Record<string, string[]>;
+    colorSequenceCategories?: Record<string, string[]>;
 }
 export interface HubspaceAccessoryContext {
     deviceId: string;
@@ -101,9 +103,11 @@ export declare const FC: {
     readonly POWER: "power";
     readonly TOGGLE: "toggle";
     readonly BRIGHTNESS: "brightness";
+    readonly BRIGHTNESS_PRESETS: "brightness-presets";
     readonly COLOR_TEMP: "color-temperature";
     readonly COLOR_RGB: "color-rgb";
     readonly COLOR_MODE: "color-mode";
+    readonly COLOR_SEQUENCE: "color-sequence";
     readonly FAN_SPEED: "fan-speed";
     readonly FAN_REVERSE: "fan-reverse";
     readonly AVAILABLE: "available";

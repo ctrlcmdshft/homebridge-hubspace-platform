@@ -63,6 +63,12 @@
         "default": false,
         "description": "Show the ceiling-fan master power (power[primary]) as a separate HomeKit switch tile. Only applies to fans that have a dedicated fan-power field alongside a master power field."
       },
+      "exposeEffectSwitches": {
+        "title": "Expose Light Effect Switches",
+        "type": "boolean",
+        "default": false,
+        "description": "Add one HomeKit switch per lighting effect for lights with on-device effect presets, such as the Home Decorators Collection Smart Grand Duchess Christmas tree (Steady Warm White, Twinkle Warm White, Slow Fade Multicolor, …). Turning a switch on selects that effect; only one is on at a time. Brightness works without this option."
+      },
       "exposeStatusFault": {
         "title": "Expose Status Fault on Fans and Lights",
         "type": "boolean",
@@ -112,6 +118,7 @@
       "items": [
         "exposeComfortBreeze",
         "exposeMasterPowerSwitch",
+        "exposeEffectSwitches",
         "exposeStatusFault",
         "invertOutletStatus",
         "excludedDevices"

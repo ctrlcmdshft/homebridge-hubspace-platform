@@ -17,6 +17,7 @@ class HubspacePlatform {
     verbose;
     exposeStatusFault;
     invertOutletStatus;
+    exposeEffectSwitches;
     configured;
     pollTimer = null;
     consecutiveFailCycles = 0;
@@ -37,6 +38,7 @@ class HubspacePlatform {
         this.verbose = this.cfg.verbose ?? false;
         this.exposeStatusFault = this.cfg.exposeStatusFault ?? false;
         this.invertOutletStatus = this.cfg.invertOutletStatus ?? false;
+        this.exposeEffectSwitches = this.cfg.exposeEffectSwitches ?? false;
         this.conclaveLog = (0, utils_1.createLogger)(this.log, 'Conclave');
         this.pollLog = (0, utils_1.createLogger)(this.log, 'Poll');
         if (!this.cfg.username || !this.cfg.password) {
@@ -127,8 +129,8 @@ class HubspacePlatform {
             const existing = this.cachedAccessories.get(uuid);
             if (existing) {
                 existing.context = this.buildContext(device);
-                this.api.updatePlatformAccessories([existing]);
                 const handler = (0, accessory_1.createAccessory)(this, existing, device);
+                this.api.updatePlatformAccessories([existing]);
                 if (handler) {
                     this.handlers.set(device.id, handler);
                     this.log.info(`Restored: "${device.friendlyName}" (${device.deviceClass})`);

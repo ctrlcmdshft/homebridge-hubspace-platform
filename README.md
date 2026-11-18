@@ -43,7 +43,7 @@ Support is capability-based, so nearby Hubspace models often work even if they a
 | --- | --- | --- | --- |
 | Ceiling fans | Hampton Bay Universal Smart Fan Controller (76278); Home Decorators Collection Tager 72 in. Fan (`N383C-MBK+V8`); `fan`, `ceiling-fan` | Fan on/off, device-specific speed steps including nine-speed fans, light kit controls, rotation direction when reported, optional Comfort Breeze and master-power switches | Hardware and community tested |
 | Lights and bulbs | EcoSmart RGBWIC LED Strip Light (AL-HSTL-RGBICTW); EcoSmart A19 Color Bulb (12A19060WRGBWH1); `light` | On/off, brightness, color temperature, RGB color when reported | Hardware tested |
-| Christmas trees | Home Decorators Collection Smart Grand Duchess Tree; `light` with `brightness-presets` and `color-sequence` | On/off, three-level brightness, and nine effect switches | Capability data captured |
+| Christmas trees | Home Decorators Collection Smart Grand Duchess Tree (26LE31013–26LE31021); `light` with `brightness-presets` and `color-sequence` | On/off, three-level brightness, optional effect switches | Implemented from community device dumps |
 | Split main/trim lights | Commercial Electric Smart Adjustable CCT/RGB Recessed Light Trim (NB36a6INRGB-W); `light` with `main` and `trim` instances | Separate Lightbulb services for each endpoint, such as main white/CCT light and trim RGB night light | Community tested |
 | Plugs and outlets | Defiant Smart Indoor Plug (HPPA11AWB); Defiant Outdoor Plug (HPPA52CWB); Commercial Electric Surge Protector (LA-12A-C); `outlet`, `plug`, `power-outlet` | Outlet on/off, OutletInUse, StatusFault; multi-outlet devices expose each controllable outlet separately | Hardware tested |
 | Switches | Hubspace Smart Switch; `switch` | Switch on/off | Implemented, untested |
@@ -61,12 +61,14 @@ Device-dependent controls only appear when the Hubspace API reports the matching
 | RGB color | `color-rgb` |
 | Color temperature | `color-temperature` |
 | Christmas tree brightness presets | `brightness-presets` |
-| Christmas tree effects | `color-sequence[preset]` and `color-mode` |
+| Christmas tree effect switches | `color-sequence[preset]` and `brightness-presets`, plus `exposeEffectSwitches: true` |
 | Split light endpoints | Multiple non-global light instances such as `power[main]`, `brightness[main]`, `power[trim]`, and `color-rgb[trim]` |
 
 All EcoSmart/Hubspace A19 bulbs should work out of the box. Color bulbs expose on/off, brightness, color temperature, and RGB; tunable white bulbs expose on/off, brightness, and color temperature only.
 
-Grand Duchess brightness presets are represented as 33%, 66%, and 100% in HomeKit. Selecting an effect changes the active `color-sequence[preset]`; the effect switches are mutually exclusive and reflect changes reported by Hubspace.
+Grand Duchess trees appear as a dimmable light. The tree's Low / Medium / High levels show as 33%, 66%, and 100%; any slider position snaps to the level whose range contains it (1–33% Low, 34–66% Medium, 67–100% High), and 0% turns the tree off. The tree firmware only applies brightness to the steady effects, not the animated ones.
+
+Lighting effects (Steady Warm White, Twinkle Warm White, Slow Fade Multicolor, and so on) are hidden by default because HomeKit has no effect picker. Set `exposeEffectSwitches: true` to add one switch per effect the tree advertises. The switches are mutually exclusive, follow changes made from the remote or the Hubspace app, and turn the tree on when selected. The store-display Demo loop is not exposed.
 
 Smart switches are implemented based on the Afero API but have not yet been verified with real hardware. If you own one and can confirm it works, or find a bug, please open an issue.
 
@@ -130,6 +132,7 @@ Minimal `config.json` entry under `"platforms"`:
 | `disableConclave` | boolean | `false` | Disable the Afero Conclave real-time push connection and rely on polling only |
 | `exposeComfortBreeze` | boolean | `false` | Add a separate "Comfort Breeze" Switch tile for ceiling fans that support it |
 | `exposeMasterPowerSwitch` | boolean | `false` | Add a separate Switch tile for the ceiling-fan master power relay (only appears on fans where the master relay is distinct from the fan control) |
+| `exposeEffectSwitches` | boolean | `false` | Add one Switch per lighting effect for lights with on-device effect presets, such as the Smart Grand Duchess Christmas tree. Turning the option off removes the switches |
 | `exposeStatusFault` | boolean | `false` | Add a non-standard fault indicator to fan and light services when Hubspace reports the device offline. Visible in third-party HomeKit apps such as Eve or Controller for HomeKit; Apple Home may not display it. |
 | `invertOutletStatus` | boolean | `false` | Invert the reported on/off state for smart plugs that report their status backwards |
 | `excludedDevices` | string | — | Comma-separated Hubspace friendly names to hide from HomeKit, matched case-insensitively. Useful for duplicate devices, unwanted sub-devices, or devices managed by another plugin. |

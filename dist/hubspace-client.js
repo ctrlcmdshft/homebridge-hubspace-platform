@@ -192,6 +192,7 @@ class HubspaceClient {
                 values: raw.state?.values ?? [],
                 colorTempCategories: this.extractColorTempCategories(raw),
                 fanSpeedCategories: this.extractFanSpeedCategories(raw),
+                colorSequenceCategories: this.extractColorSequenceCategories(raw),
             });
         }
         const deduped = new Map();
@@ -220,6 +221,10 @@ class HubspaceClient {
                         ...(secondary.fanSpeedCategories ?? {}),
                         ...(primary.fanSpeedCategories ?? {}),
                     },
+                    colorSequenceCategories: {
+                        ...(secondary.colorSequenceCategories ?? {}),
+                        ...(primary.colorSequenceCategories ?? {}),
+                    },
                 };
                 deduped.set(key, merged);
             }
@@ -243,9 +248,15 @@ class HubspaceClient {
         return Object.keys(categories).length > 0 ? categories : undefined;
     }
     extractFanSpeedCategories(raw) {
+        return this.extractCategoryNames(raw, types_1.FC.FAN_SPEED);
+    }
+    extractColorSequenceCategories(raw) {
+        return this.extractCategoryNames(raw, types_1.FC.COLOR_SEQUENCE);
+    }
+    extractCategoryNames(raw, functionClass) {
         const categories = {};
         for (const fn of raw.description?.functions ?? []) {
-            if (fn.functionClass !== types_1.FC.FAN_SPEED || fn.type !== 'category')
+            if (fn.functionClass !== functionClass || fn.type !== 'category')
                 continue;
             const values = (fn.values ?? [])
                 .map(value => value.name)

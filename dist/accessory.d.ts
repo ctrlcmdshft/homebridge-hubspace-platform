@@ -39,22 +39,31 @@ export declare abstract class BaseHubspaceAccessory {
 }
 export declare class LightAccessory extends BaseHubspaceAccessory {
     private svcs;
+    private effects;
+    private effectSvcs;
     private readonly pendingHue;
     private readonly pendingSat;
     private get lightInstances();
     protected setupServices(): void;
+    private availableEffects;
+    private setupEffectSwitches;
+    private removeStaleEffectSwitches;
     private getLightService;
     private lightInstanceLabel;
     private findLightValue;
     private buildLightPatch;
     private getPower;
     private getBrightness;
+    private getSelectedEffect;
     private getColorTemp;
     private getHue;
     private getSaturation;
     private setPower;
     private readonly brightnessTimers;
     private setBrightness;
+    private brightnessToPreset;
+    private setEffect;
+    private pushEffectCharacteristics;
     private readonly colorTempTimers;
     private setColorTemp;
     private setPendingHue;

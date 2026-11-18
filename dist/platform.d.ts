@@ -12,6 +12,7 @@ export declare class HubspacePlatform implements DynamicPlatformPlugin {
     readonly verbose: boolean;
     readonly exposeStatusFault: boolean;
     readonly invertOutletStatus: boolean;
+    readonly exposeEffectSwitches: boolean;
     private readonly configured;
     private pollTimer;
     private consecutiveFailCycles;

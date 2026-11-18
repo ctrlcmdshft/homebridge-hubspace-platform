@@ -24,6 +24,7 @@ function makeSvcMock() {
     addOptionalCharacteristic: jest.fn(),
     setCharacteristic: jest.fn().mockReturnThis(),
     updateCharacteristic: jest.fn(),
+    setPrimaryService: jest.fn(),
   };
 }
 
@@ -146,7 +147,7 @@ async function discover(platform: HubspacePlatform, devices: HubspaceDevice[]) {
 
 describe('HubspacePlatform cached accessory updates', () => {
   it('persists newly added device services after restoring a cached accessory', async () => {
-    const { platform, updatePlatformAccessories } = makePlatform();
+    const { platform, updatePlatformAccessories } = makePlatform({ exposeEffectSwitches: true });
     const cached = new (platform.api as any).platformAccessory('Xmas tree', 'uuid-device-id');
     updatePlatformAccessories.mockImplementation((accessories: any[]) => {
       expect(accessories[0].services).toHaveLength(9);
